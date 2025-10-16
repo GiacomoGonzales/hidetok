@@ -4,26 +4,35 @@
     "slug": "hidetok-simple",
     "version": "1.0.0",
     "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true
+      "backgroundColor": "#0A0A0A"
     },
     "android": {
+      "package": "com.hidetoksimple.app",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true
+      }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png",
+      "name": "HideTok - Red Social Anónima",
+      "shortName": "HideTok",
+      "description": "Comparte de forma anónima con HideTok",
+      "backgroundColor": "#0A0A0A",
+      "themeColor": "#8B5CF6",
+      "orientation": "portrait-primary"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "31297521-34c6-4238-af4f-e663953af31f"
+      }
     }
   }
 }

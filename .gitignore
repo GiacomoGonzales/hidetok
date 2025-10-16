@@ -35,3 +35,21 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# Temporary and backup files
+nul
+*.backup
+*-backup.*
+App-backup.tsx
+app-backup.json
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Environment variables (IMPORTANT - don't upload credentials!)
+.env
+env.local
+.env.production

@@ -1,0 +1,28 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Reglas para imágenes de posts
+    match /images/posts/{userId}/{fileName} {
+      allow read: if true; // Cualquiera puede leer posts públicos
+      allow write: if request.auth != null 
+                   && request.auth.uid == userId
+                   && request.resource.size < 5 * 1024 * 1024 // Max 5MB
+                   && request.resource.contentType.matches('image/.*');
+    }
+    
+    // Reglas para imágenes de perfil
+    match /images/profile/{userId}/{fileName} {
+      allow read: if true; // Cualquiera puede leer avatares
+      allow write: if request.auth != null 
+                   && request.auth.uid == userId
+                   && request.resource.size < 2 * 1024 * 1024 // Max 2MB
+                   && request.resource.contentType.matches('image/.*');
+    }
+    
+    // Fallback: permitir lectura/escritura para usuarios autenticados
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
