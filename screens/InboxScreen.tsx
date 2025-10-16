@@ -12,22 +12,30 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useTheme } from '../contexts/ThemeContext';
-import { 
-  mockConversations, 
-  mockUsers, 
-  Conversation, 
-  Message, 
-  getRelativeTime, 
-  formatNumber 
+import { useResponsive } from '../hooks/useResponsive';
+import {
+  mockConversations,
+  mockUsers,
+  Conversation,
+  Message,
+  getRelativeTime,
+  formatNumber
 } from '../data/mockData';
 import { InboxStackParamList } from '../navigation/InboxStackNavigator';
+import Header from '../components/Header';
 
 type InboxScreenNavigationProp = StackNavigationProp<InboxStackParamList, 'InboxList'>;
 
 const InboxScreen: React.FC = () => {
   const { theme } = useTheme();
   const navigation = useNavigation<InboxScreenNavigationProp>();
+  const { isDesktop } = useResponsive();
   const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
+
+  // Función de navegación para el header
+  const handleSearchPress = () => {
+    navigation.navigate('Search' as never);
+  };
 
   // Mock messages para cada conversación
   const getMessagesForConversation = (conversationId: string): Message[] => {
@@ -237,8 +245,15 @@ const InboxScreen: React.FC = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Header principal - solo en móvil */}
+      {!isDesktop && (
+        <Header
+          onSearchPress={handleSearchPress}
+        />
+      )}
+
       {renderHeader()}
-      
+
       <FlatList
         data={conversations}
         renderItem={renderConversation}

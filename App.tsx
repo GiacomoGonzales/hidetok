@@ -5,6 +5,7 @@ import { Alert, Platform } from 'react-native';
 
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { ScrollProvider } from './contexts/ScrollContext';
 import MainStackNavigator from './navigation/MainStackNavigator';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -84,9 +85,11 @@ export default function App() {
       <SafeAreaProvider>
         <ThemeProvider>
           <AuthProvider>
-            <NavigationContainer linking={linking}>
-              <MainStackNavigator />
-            </NavigationContainer>
+            <ScrollProvider>
+              <NavigationContainer linking={linking}>
+                <MainStackNavigator />
+              </NavigationContainer>
+            </ScrollProvider>
           </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>

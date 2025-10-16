@@ -13,6 +13,7 @@ import CreateScreen from '../screens/CreateScreen';
 import InboxStackNavigator from './InboxStackNavigator';
 import ProfileStackNavigator from './ProfileStackNavigator';
 import { MainStackParamList } from './MainStackNavigator';
+import CustomTabBar from '../components/CustomTabBar';
 
 // Componente dummy para la pestaña Search
 const SearchTabPlaceholder = () => null;
@@ -29,6 +30,7 @@ const TabNavigator: React.FC = () => {
 
   return (
     <Tab.Navigator
+      tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {

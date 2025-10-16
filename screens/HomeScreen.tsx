@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { useUserProfile } from '../hooks/useUserProfile';
+import { useScroll } from '../contexts/ScrollContext';
 import { postsService, Post } from '../services/firestoreService';
 import PostCard from '../components/PostCard';
 import Header from '../components/Header';
@@ -23,11 +24,14 @@ const HomeScreen: React.FC = () => {
   const { userProfile } = useUserProfile();
   const { contentMaxWidth, isDesktop } = useResponsive();
   const navigation = useNavigation<HomeScreenNavigationProp>();
+  const { setIsScrollingDown } = useScroll();
   const [activeTab, setActiveTab] = useState<'following' | 'foryou'>('foryou');
   const [refreshing, setRefreshing] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const scrollY = useRef(0);
+  const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Función de navegación para el header
   const handleSearchPress = () => {
@@ -104,6 +108,30 @@ const HomeScreen: React.FC = () => {
 
   const handlePostPress = (post: Post) => {
     navigation.navigate('PostDetail', { post });
+  };
+
+  // Manejar el scroll
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const currentScrollY = event.nativeEvent.contentOffset.y;
+    const scrollDiff = currentScrollY - scrollY.current;
+
+    // Solo detectar scroll si hay un movimiento significativo (más de 5px)
+    if (Math.abs(scrollDiff) > 5) {
+      const isGoingDown = scrollDiff > 0;
+      setIsScrollingDown(isGoingDown);
+
+      // Limpiar timeout previo
+      if (scrollTimeout.current) {
+        clearTimeout(scrollTimeout.current);
+      }
+
+      // Después de 150ms sin scroll, resetear a transparente=false
+      scrollTimeout.current = setTimeout(() => {
+        setIsScrollingDown(false);
+      }, 150);
+    }
+
+    scrollY.current = currentScrollY;
   };
 
   const renderTabButton = (tab: 'following' | 'foryou', label: string) => (
@@ -257,6 +285,8 @@ const HomeScreen: React.FC = () => {
           getFilteredPosts().length === 0 && styles.emptyContainer
         ]}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
