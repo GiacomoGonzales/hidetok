@@ -6,26 +6,28 @@ import Constants from 'expo-constants';
 
 console.log('🔥 Starting Firebase initialization...');
 
-// Configuración de Firebase usando variables de entorno o Constants.expoConfig
-const getConfigValue = (key: string, envKey: string) => {
-  const envValue = process.env[envKey];
-  const constantsValue = Constants.expoConfig?.extra?.[envKey];
-  const value = envValue || constantsValue;
-  
-  console.log(`🔍 ${envKey}: env=${envValue ? 'SET' : 'UNSET'}, constants=${constantsValue ? 'SET' : 'UNSET'}, final=${value ? 'SET' : 'UNSET'}`);
-  
-  return value;
+// Configuración de Firebase usando variables de entorno
+// En Expo, las variables EXPO_PUBLIC_* están disponibles en process.env durante el build
+const firebaseConfig = {
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-const firebaseConfig = {
-  apiKey: getConfigValue('apiKey', 'EXPO_PUBLIC_FIREBASE_API_KEY'),
-  authDomain: getConfigValue('authDomain', 'EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN'),
-  projectId: getConfigValue('projectId', 'EXPO_PUBLIC_FIREBASE_PROJECT_ID'),
-  storageBucket: getConfigValue('storageBucket', 'EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET'),
-  messagingSenderId: getConfigValue('messagingSenderId', 'EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
-  appId: getConfigValue('appId', 'EXPO_PUBLIC_FIREBASE_APP_ID'),
-  measurementId: getConfigValue('measurementId', 'EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID'),
-};
+// Log para debugging
+console.log('🔍 Firebase config values:', {
+  apiKey: firebaseConfig.apiKey ? 'SET' : 'UNSET',
+  authDomain: firebaseConfig.authDomain ? 'SET' : 'UNSET',
+  projectId: firebaseConfig.projectId ? 'SET' : 'UNSET',
+  storageBucket: firebaseConfig.storageBucket ? 'SET' : 'UNSET',
+  messagingSenderId: firebaseConfig.messagingSenderId ? 'SET' : 'UNSET',
+  appId: firebaseConfig.appId ? 'SET' : 'UNSET',
+  measurementId: firebaseConfig.measurementId ? 'SET' : 'UNSET',
+});
 
 console.log('📋 Firebase config assembled:', firebaseConfig);
 
