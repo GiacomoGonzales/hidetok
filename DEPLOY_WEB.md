@@ -70,7 +70,7 @@ npm install -g vercel
 
 2. Build para web:
 ```bash
-npx expo export:web
+npx expo export -p web
 ```
 
 ### Despliegue
@@ -104,7 +104,7 @@ vercel --prod
 Crea `vercel.json` en la raíz:
 ```json
 {
-  "buildCommand": "npx expo export:web",
+  "buildCommand": "npx expo export -p web",
   "outputDirectory": "dist",
   "cleanUrls": true,
   "rewrites": [
@@ -143,7 +143,7 @@ Crea `vercel.json` en la raíz:
 
 1. Build para web:
 ```bash
-npx expo export:web
+npx expo export -p web
 ```
 
 ### Despliegue Manual
@@ -156,7 +156,7 @@ npx expo export:web
 
 1. Conecta tu repositorio de GitHub
 2. Configura Build settings:
-   - Build command: `npx expo export:web`
+   - Build command: `npx expo export -p web`
    - Publish directory: `dist`
 3. Agrega variables de entorno en Site settings
 
@@ -165,7 +165,7 @@ npx expo export:web
 Crea `netlify.toml` en la raíz:
 ```toml
 [build]
-  command = "npx expo export:web"
+  command = "npx expo export -p web"
   publish = "dist"
 
 [[redirects]]
@@ -211,7 +211,7 @@ firebase init hosting
 
 4. Build:
 ```bash
-npx expo export:web
+npx expo export -p web
 ```
 
 5. Deploy:
@@ -223,7 +223,7 @@ firebase deploy --only hosting
 
 **IMPORTANTE**: Firebase Hosting es estático, las variables de entorno NO funcionan en runtime.
 
-**Solución**: Las variables `EXPO_PUBLIC_*` se incluyen en el bundle durante `expo export:web`, así que ya están en el código compilado.
+**Solución**: Las variables `EXPO_PUBLIC_*` se incluyen en el bundle durante `expo export -p web`, así que ya están en el código compilado.
 
 ---
 
@@ -316,7 +316,7 @@ Tu app estará en: `https://hidetok-9a642.web.app` o `https://hidetok-9a642.fire
 ## 📝 Checklist de Despliegue
 
 - [ ] Credenciales de Firebase correctas en variables de entorno
-- [ ] Build exitoso: `npx expo export:web`
+- [ ] Build exitoso: `npx expo export -p web`
 - [ ] Variables de entorno configuradas en la plataforma
 - [ ] Reglas de Firestore configuradas
 - [ ] Reglas de Storage configuradas
@@ -342,7 +342,7 @@ Tu app estará en: `https://hidetok-9a642.web.app` o `https://hidetok-9a642.fire
 ```bash
 rm -rf node_modules .expo dist
 npm install
-npx expo export:web
+npx expo export -p web
 ```
 
 ### Las variables de entorno no se cargan
