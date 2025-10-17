@@ -1,6 +1,7 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserProfile } from '../hooks/useUserProfile';
 import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
 import { useResponsive } from '../hooks/useResponsive';
 import { useTheme } from '../contexts/ThemeContext';
@@ -8,6 +9,7 @@ import MainTabsScreen from '../screens/MainTabsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import SearchScreen from '../screens/SearchScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
+import OnboardingScreen from '../screens/OnboardingScreen';
 import AuthStackNavigator from './AuthStackNavigator';
 import Sidebar from '../components/Sidebar';
 import RightSidebar from '../components/RightSidebar';
@@ -25,12 +27,13 @@ export type MainStackParamList = {
 const Stack = createStackNavigator<MainStackParamList>();
 
 const MainStackNavigator: React.FC = () => {
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const { userProfile, loading: profileLoading } = useUserProfile();
   const { theme } = useTheme();
   const { isDesktop } = useResponsive();
 
-  // Mostrar loading mientras se verifica la autenticación
-  if (loading) {
+  // Mostrar loading mientras se verifica la autenticación o el perfil
+  if (authLoading || (user && profileLoading)) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#6366F1" />
@@ -41,6 +44,16 @@ const MainStackNavigator: React.FC = () => {
   // Si no hay usuario autenticado, mostrar pantallas de autenticación
   if (!user) {
     return <AuthStackNavigator />;
+  }
+
+  // Si el usuario está autenticado pero necesita completar el onboarding
+  // (perfil sin displayName configurado o creado recientemente)
+  const needsOnboarding = !userProfile?.displayName ||
+    userProfile.displayName === user.email?.split('@')[0] ||
+    userProfile.displayName === 'Usuario Anónimo';
+
+  if (needsOnboarding) {
+    return <OnboardingScreen />;
   }
 
   // Usuario autenticado, mostrar la app principal
