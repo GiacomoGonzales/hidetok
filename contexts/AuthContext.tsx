@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
+import { Platform } from 'react-native';
+import {
   User,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInAnonymously,
+  signInAnonymously as firebaseSignInAnonymously,
   signInWithCredential,
+  signInWithPopup,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
@@ -15,7 +17,9 @@ import { auth } from '../config/firebase';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 
-WebBrowser.maybeCompleteAuthSession();
+if (Platform.OS !== 'web') {
+  WebBrowser.maybeCompleteAuthSession();
+}
 
 interface AuthContextType {
   user: User | null;
@@ -100,8 +104,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signInWithGoogle = async (): Promise<void> => {
     try {
+      // En Web, usar signInWithPopup directamente
+      if (Platform.OS === 'web') {
+        console.log('🔵 Iniciando Google Sign-In en Web...');
+        const provider = new GoogleAuthProvider();
+        provider.addScope('profile');
+        provider.addScope('email');
+
+        // Usar popup para mejor experiencia en web
+        const result = await signInWithPopup(auth, provider);
+        console.log('✅ Google Sign-In exitoso:', result.user.email);
+        return;
+      }
+
+      // En Mobile (iOS/Android), usar AuthSession con Expo
+      console.log('📱 Iniciando Google Sign-In en Mobile...');
       const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
-      
+
       // Verificar que esté configurado el Client ID
       if (!googleClientId || googleClientId === 'your_google_client_id_here') {
         throw new Error('Google Client ID no está configurado. Por favor configura EXPO_PUBLIC_GOOGLE_CLIENT_ID en tu archivo env.local');
@@ -109,7 +128,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Configuración para Expo
       const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
-      
+
       const request = new AuthSession.AuthRequest({
         clientId: googleClientId,
         scopes: ['openid', 'profile', 'email'],
@@ -124,23 +143,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (result.type === 'success' && result.params.id_token) {
         const credential = GoogleAuthProvider.credential(result.params.id_token);
         await signInWithCredential(auth, credential);
+        console.log('✅ Google Sign-In exitoso');
       } else if (result.type === 'cancel') {
+        console.log('⚠️ Usuario canceló Google Sign-In');
         // Usuario canceló, no es un error
         return;
       } else {
         throw new Error('Error en la autenticación con Google');
       }
     } catch (error) {
-      console.error('Error en Google Sign-In:', error);
+      console.error('❌ Error en Google Sign-In:', error);
       throw error;
     }
   };
 
   const signInAnonymouslyHandler = async (): Promise<void> => {
     try {
-      await signInAnonymously(auth);
+      console.log('👤 Iniciando sesión anónima...');
+      await firebaseSignInAnonymously(auth);
+      console.log('✅ Sesión anónima iniciada');
     } catch (error) {
-      console.error('Error en autenticación anónima:', error);
+      console.error('❌ Error en autenticación anónima:', error);
       throw error;
     }
   };
