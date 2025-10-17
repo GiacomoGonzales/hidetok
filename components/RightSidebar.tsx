@@ -182,8 +182,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: SPACING.xl,
-    paddingTop: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
   },
   searchContainer: {
     flexDirection: 'row',

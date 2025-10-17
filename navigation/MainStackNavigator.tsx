@@ -170,7 +170,6 @@ const styles = StyleSheet.create({
   desktopContainer: {
     flex: 1,
     flexDirection: 'row',
-    maxWidth: 1600,
     width: '100%',
     alignSelf: 'center',
   },
@@ -181,12 +180,12 @@ const styles = StyleSheet.create({
   mainContent: {
     flex: 1,
     minWidth: 0,
-    maxWidth: 700,
+    maxWidth: 600,
     borderLeftWidth: Platform.OS === 'web' ? 0.5 : 0,
     borderRightWidth: Platform.OS === 'web' ? 0.5 : 0,
   },
   rightSidebar: {
-    width: 400,
+    width: 300,
     borderLeftWidth: 0.5,
   },
 });

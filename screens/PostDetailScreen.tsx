@@ -11,12 +11,16 @@ import {
   Platform,
   Image,
   KeyboardAvoidingView,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
+import { useResponsive } from '../hooks/useResponsive';
 import { Post, Comment, mockComments, getRelativeTime, formatNumber } from '../data/mockData';
 import PostCard from '../components/PostCard';
+
+const { width: screenWidth } = Dimensions.get('window');
 
 interface PostDetailScreenProps {
   route: {
@@ -32,6 +36,7 @@ interface PostDetailScreenProps {
 const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navigation }) => {
   const { post } = route.params;
   const { theme } = useTheme();
+  const { isDesktop } = useResponsive();
   const insets = useSafeAreaInsets();
   const [commentText, setCommentText] = useState('');
   const [comments, setComments] = useState<Comment[]>(mockComments[post.id] || []);
@@ -191,17 +196,21 @@ const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navigation }
     </View>
   );
 
-  return (
-    <KeyboardAvoidingView 
-      style={[styles.fullscreenContainer, { backgroundColor: theme.colors.background }]}
+  const content = (
+    <KeyboardAvoidingView
+      style={[
+        styles.fullscreenContainer,
+        { backgroundColor: theme.colors.background },
+        isDesktop && styles.desktopContainer
+      ]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       {/* Header */}
-      <View style={[styles.header, { 
+      <View style={[styles.header, {
         backgroundColor: theme.colors.background,
         borderBottomColor: theme.colors.border,
-        paddingTop: insets.top,
+        paddingTop: isDesktop ? 0 : insets.top,
       }]}>
         <TouchableOpacity
           style={styles.backButton}
@@ -232,12 +241,12 @@ const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navigation }
       />
 
       {/* Comment Input */}
-      <View style={[styles.inputSection, { 
+      <View style={[styles.inputSection, {
         borderTopColor: theme.colors.border,
         backgroundColor: theme.colors.background,
-        paddingBottom: Math.max(insets.bottom, 16),
+        paddingBottom: isDesktop ? 16 : Math.max(insets.bottom, 16),
       }]}>
-        <View style={[styles.inputWrapper, { 
+        <View style={[styles.inputWrapper, {
           backgroundColor: theme.colors.surface,
           borderColor: theme.colors.border,
         }]}>
@@ -257,17 +266,17 @@ const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navigation }
             textAlignVertical="top"
           />
           <TouchableOpacity
-            style={[styles.sendButton, { 
+            style={[styles.sendButton, {
               backgroundColor: commentText.trim() ? theme.colors.accent : 'transparent',
             }]}
             onPress={handleSubmitComment}
             disabled={!commentText.trim()}
             activeOpacity={0.8}
           >
-            <Ionicons 
-              name="send" 
-              size={18} 
-              color={commentText.trim() ? 'white' : theme.colors.textSecondary} 
+            <Ionicons
+              name="send"
+              size={18}
+              color={commentText.trim() ? 'white' : theme.colors.textSecondary}
             />
           </TouchableOpacity>
         </View>
@@ -279,11 +288,46 @@ const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navigation }
       </View>
     </KeyboardAvoidingView>
   );
+
+  if (isDesktop) {
+    return (
+      <View style={[styles.desktopOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+        <View style={[styles.desktopModal, { borderColor: theme.colors.border }]}>
+          {content}
+        </View>
+      </View>
+    );
+  }
+
+  return content;
 };
 
 const styles = StyleSheet.create({
   fullscreenContainer: {
     flex: 1,
+  },
+  // Desktop Styles
+  desktopOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  desktopModal: {
+    width: '90%',
+    maxWidth: 700,
+    height: '90%',
+    maxHeight: 800,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
+      },
+    }),
+  },
+  desktopContainer: {
+    borderRadius: 16,
   },
   header: {
     flexDirection: 'row',

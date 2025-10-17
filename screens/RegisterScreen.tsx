@@ -11,17 +11,14 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-
 const RegisterScreen: React.FC = () => {
   const [formData, setFormData] = useState({
-    displayName: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -38,12 +35,7 @@ const RegisterScreen: React.FC = () => {
   };
 
   const validateForm = (): boolean => {
-    const { displayName, email, password, confirmPassword } = formData;
-
-    if (!displayName.trim()) {
-      Alert.alert('Error', 'Por favor ingresa tu nombre');
-      return false;
-    }
+    const { email, password, confirmPassword } = formData;
 
     if (!email.trim()) {
       Alert.alert('Error', 'Por favor ingresa tu email');
@@ -79,8 +71,8 @@ const RegisterScreen: React.FC = () => {
 
     setLoading(true);
     try {
-      const { displayName, email, password } = formData;
-      await signUp(email, password, displayName);
+      const { email, password } = formData;
+      await signUp(email, password);
       // La navegación se manejará automáticamente por el estado de autenticación
     } catch (error: any) {
       let errorMessage = 'Error al crear la cuenta';
@@ -136,149 +128,150 @@ const RegisterScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6366F1" />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#8B5CF6" />
         <Text style={styles.loadingText}>Creando cuenta...</Text>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        style={styles.keyboardContainer}
+        style={styles.content}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView 
-          contentContainerStyle={styles.scrollContainer}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Logo y título */}
           <View style={styles.header}>
-            <Image 
-              source={require('../assets/logo.png')} 
+            <Image
+              source={require('../assets/logo.png')}
               style={styles.logo}
               resizeMode="contain"
             />
-            <Text style={styles.subtitle}>Crea tu cuenta para comenzar</Text>
+            <Text style={styles.title}>Crea tu cuenta</Text>
+            <Text style={styles.subtitle}>Únete a la comunidad HideTok</Text>
           </View>
 
-        <View style={styles.form}>
-          {/* Display Name Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Nombre de usuario</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Tu nombre de usuario"
-              value={formData.displayName}
-              onChangeText={(value) => updateFormData('displayName', value)}
-              autoCapitalize="words"
-              autoCorrect={false}
-            />
-          </View>
-
-          {/* Email Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="tu@email.com"
-              value={formData.email}
-              onChangeText={(value) => updateFormData('email', value)}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          {/* Password Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Contraseña</Text>
-            <View style={styles.passwordContainer}>
+          {/* Formulario */}
+          <View style={styles.form}>
+            {/* Email Input */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Email</Text>
               <TextInput
-                style={styles.passwordInput}
-                placeholder="Mínimo 6 caracteres"
-                value={formData.password}
-                onChangeText={(value) => updateFormData('password', value)}
-                secureTextEntry={!showPassword}
+                style={styles.input}
+                placeholder="tu@email.com"
+                placeholderTextColor="#9CA3AF"
+                value={formData.email}
+                onChangeText={(value) => updateFormData('email', value)}
+                keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-              <TouchableOpacity
-                style={styles.eyeButton}
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Text style={styles.eyeText}>{showPassword ? '🙈' : '👁️'}</Text>
-              </TouchableOpacity>
             </View>
-          </View>
 
-          {/* Confirm Password Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Confirmar contraseña</Text>
-            <View style={styles.passwordContainer}>
-              <TextInput
-                style={styles.passwordInput}
-                placeholder="Repite tu contraseña"
-                value={formData.confirmPassword}
-                onChangeText={(value) => updateFormData('confirmPassword', value)}
-                secureTextEntry={!showConfirmPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <TouchableOpacity
-                style={styles.eyeButton}
-                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-              >
-                <Text style={styles.eyeText}>{showConfirmPassword ? '🙈' : '👁️'}</Text>
-              </TouchableOpacity>
+            {/* Password Input */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Contraseña</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Mínimo 6 caracteres"
+                  placeholderTextColor="#9CA3AF"
+                  value={formData.password}
+                  onChangeText={(value) => updateFormData('password', value)}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  style={styles.eyeButton}
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color="#9CA3AF"
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
 
-          {/* Register Button */}
-          <TouchableOpacity style={styles.primaryButton} onPress={handleEmailRegister}>
-            <Text style={styles.primaryButtonText}>Crear Cuenta</Text>
-          </TouchableOpacity>
+            {/* Confirm Password Input */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Confirmar contraseña</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Repite tu contraseña"
+                  placeholderTextColor="#9CA3AF"
+                  value={formData.confirmPassword}
+                  onChangeText={(value) => updateFormData('confirmPassword', value)}
+                  secureTextEntry={!showConfirmPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  style={styles.eyeButton}
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  <Ionicons
+                    name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color="#9CA3AF"
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
 
-          {/* Divider */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>O regístrate con</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Google Register Button */}
-          <TouchableOpacity style={styles.googleButton} onPress={handleGoogleRegister}>
-            <Image 
-              source={{ uri: 'https://developers.google.com/identity/images/g-logo.png' }}
-              style={styles.googleLogo}
-              resizeMode="contain"
-            />
-            <Text style={styles.googleButtonText}>Continuar con Google</Text>
-          </TouchableOpacity>
-
-          {/* Anonymous Access Button */}
-          <TouchableOpacity style={styles.anonymousButton} onPress={handleAnonymousAccess}>
-            <Text style={styles.anonymousIcon}>👤</Text>
-            <Text style={styles.anonymousButtonText}>Iniciar sesión anónimamente</Text>
-          </TouchableOpacity>
-
-          {/* Login Link */}
-          <View style={styles.loginContainer}>
-            <Text style={styles.loginText}>¿Ya tienes cuenta? </Text>
-            <TouchableOpacity onPress={navigateToLogin}>
-              <Text style={styles.loginLink}>Inicia sesión aquí</Text>
+            {/* Register Button */}
+            <TouchableOpacity style={styles.primaryButton} onPress={handleEmailRegister}>
+              <Text style={styles.primaryButtonText}>Crear Cuenta</Text>
             </TouchableOpacity>
-          </View>
 
-          {/* Terms Notice */}
-          <Text style={styles.termsText}>
-            Al crear una cuenta, aceptas nuestros{' '}
-            <Text style={styles.termsLink}>Términos de Servicio</Text>
-            {' '}y{' '}
-            <Text style={styles.termsLink}>Política de Privacidad</Text>
-          </Text>
-        </View>
+            {/* Divider */}
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>O regístrate con</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Google Register Button */}
+            <TouchableOpacity style={styles.googleButton} onPress={handleGoogleRegister}>
+              <Image
+                source={{ uri: 'https://developers.google.com/identity/images/g-logo.png' }}
+                style={styles.googleLogo}
+                resizeMode="contain"
+              />
+              <Text style={styles.googleButtonText}>Continuar con Google</Text>
+            </TouchableOpacity>
+
+            {/* Anonymous Access Button */}
+            <TouchableOpacity style={styles.anonymousButton} onPress={handleAnonymousAccess}>
+              <Ionicons name="person-outline" size={20} color="#FFF" style={styles.anonymousIcon} />
+              <Text style={styles.anonymousButtonText}>Iniciar sesión anónimamente</Text>
+            </TouchableOpacity>
+
+            {/* Login Link */}
+            <View style={styles.loginContainer}>
+              <Text style={styles.loginText}>¿Ya tienes cuenta? </Text>
+              <TouchableOpacity onPress={navigateToLogin}>
+                <Text style={styles.loginLink}>Inicia sesión aquí</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Terms Notice */}
+            <Text style={styles.termsText}>
+              Al crear una cuenta, aceptas nuestros{' '}
+              <Text style={styles.termsLink}>Términos de Servicio</Text>
+              {' '}y{' '}
+              <Text style={styles.termsLink}>Política de Privacidad</Text>
+            </Text>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -288,10 +281,19 @@ const RegisterScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#0A0A0A',
   },
-  keyboardContainer: {
+  content: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    justifyContent: 'center',
+    maxWidth: 408,
+    width: '100%',
+    alignSelf: 'center',
   },
   loadingContainer: {
     flex: 1,
@@ -302,160 +304,164 @@ const styles = StyleSheet.create({
   loadingText: {
     color: '#FFF',
     marginTop: 10,
-    fontSize: 16,
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingVertical: 15,
+    fontSize: 14,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 25,
-    paddingTop: 10,
+    marginBottom: 16,
   },
   logo: {
-    width: 100,
-    height: 65,
-    marginBottom: 12,
+    width: 70,
+    height: 48,
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 4,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 12,
     color: '#9CA3AF',
     textAlign: 'center',
   },
   form: {
-    flex: 1,
+    width: '100%',
   },
   inputContainer: {
-    marginBottom: 14,
+    marginBottom: 10,
   },
   label: {
-    fontSize: 16,
+    fontSize: 11,
     fontWeight: '600',
     color: '#FFF',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   input: {
-    backgroundColor: '#1F2937',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 13,
     color: '#FFF',
     borderWidth: 1,
-    borderColor: '#374151',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   passwordContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1F2937',
-    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#374151',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   passwordInput: {
     flex: 1,
-    padding: 16,
-    fontSize: 16,
+    padding: 10,
+    fontSize: 13,
     color: '#FFF',
   },
   eyeButton: {
-    padding: 16,
-  },
-  eyeText: {
-    fontSize: 18,
+    padding: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   primaryButton: {
-    backgroundColor: '#6366F1',
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: '#8B5CF6',
+    borderRadius: 10,
+    padding: 10,
     alignItems: 'center',
-    marginBottom: 18,
+    marginTop: 4,
+    marginBottom: 10,
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   primaryButtonText: {
     color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 14,
+    marginVertical: 10,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#374151',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   dividerText: {
     color: '#9CA3AF',
-    paddingHorizontal: 16,
-    fontSize: 14,
+    paddingHorizontal: 10,
+    fontSize: 11,
   },
   googleButton: {
     backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 10,
+    padding: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
   },
-  googleIcon: {
-    fontSize: 20,
-    marginRight: 12,
-  },
   googleLogo: {
-    width: 20,
-    height: 20,
-    marginRight: 12,
+    width: 15,
+    height: 15,
+    marginRight: 8,
   },
   googleButtonText: {
     color: '#1F2937',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
   },
   anonymousButton: {
-    backgroundColor: '#374151',
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 10,
+    padding: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   anonymousIcon: {
-    fontSize: 20,
-    marginRight: 12,
+    marginRight: 8,
   },
   anonymousButtonText: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
   },
   loginContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginTop: 4,
+    marginBottom: 8,
   },
   loginText: {
     color: '#9CA3AF',
-    fontSize: 14,
+    fontSize: 11,
   },
   loginLink: {
-    color: '#6366F1',
-    fontSize: 14,
+    color: '#8B5CF6',
+    fontSize: 11,
     fontWeight: '600',
   },
   termsText: {
     color: '#9CA3AF',
-    fontSize: 12,
+    fontSize: 10,
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 14,
   },
   termsLink: {
-    color: '#6366F1',
+    color: '#8B5CF6',
     fontWeight: '500',
   },
 });

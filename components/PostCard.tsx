@@ -136,11 +136,10 @@ const PostCard: React.FC<PostCardProps> = ({
     <TouchableOpacity
       style={[styles.container, {
         backgroundColor: theme.colors.card,
-        borderColor: theme.colors.border,
         shadowColor: theme.dark ? theme.colors.glow : '#000',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: theme.dark ? 0.05 : 0,
-        shadowRadius: 1,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: theme.dark ? 0.2 : 0.08,
+        shadowRadius: theme.dark ? 12 : 8,
       }]}
       onPress={() => onPress?.(post)}
       activeOpacity={0.98}
@@ -271,8 +270,14 @@ const PostCard: React.FC<PostCardProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    borderBottomWidth: 0.5,
-    paddingVertical: SPACING.md,
+    marginBottom: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    borderWidth: 0,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
   },
   header: {
     flexDirection: 'row',
@@ -332,12 +337,13 @@ const styles = StyleSheet.create({
   },
   singleMediaContainer: {
     position: 'relative',
-    borderRadius: 8,
+    borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
+    marginTop: SPACING.sm,
   },
   singleMedia: {
     width: '100%',
-    height: 200,
+    height: 280,
   },
   videoOverlay: {
     position: 'absolute',
@@ -352,11 +358,12 @@ const styles = StyleSheet.create({
   mediaGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 4,
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
   },
   mediaGridItem: {
     position: 'relative',
-    borderRadius: 6,
+    borderRadius: BORDER_RADIUS.md,
     overflow: 'hidden',
   },
   gridMedia: {

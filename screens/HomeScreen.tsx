@@ -239,8 +239,11 @@ const HomeScreen: React.FC = () => {
         style={[
           styles.quickPostContainer,
           {
-            borderBottomColor: theme.colors.border,
             backgroundColor: theme.colors.card,
+            shadowColor: theme.dark ? theme.colors.glow : '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: theme.dark ? 0.15 : 0.05,
+            shadowRadius: theme.dark ? 8 : 4,
           }
         ]}
         onPress={() => navigation.navigate('Create' as never)}
@@ -358,7 +361,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.lg,
-    borderBottomWidth: 0.5,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
+    elevation: 1,
   },
   quickPostContent: {
     flex: 1,
@@ -385,6 +392,7 @@ const styles = StyleSheet.create({
   },
   postContainer: {
     paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.xs,
   },
   emptyContainer: {
     flex: 1,

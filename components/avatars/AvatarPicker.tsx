@@ -10,11 +10,15 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useResponsive } from '../../hooks/useResponsive';
 import { predefinedAvatars } from './AvatarSVGs';
+
+const { width: screenWidth } = Dimensions.get('window');
 
 interface AvatarPickerProps {
   currentAvatar?: string;
@@ -36,6 +40,7 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
   size = 80,
 }) => {
   const { theme } = useTheme();
+  const { isDesktop } = useResponsive();
   const [showPicker, setShowPicker] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -195,11 +200,19 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
       <Modal
         visible={showPicker}
         transparent
-        animationType="slide"
+        animationType={isDesktop ? "fade" : "slide"}
         onRequestClose={() => setShowPicker(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.card }]}>
+        <View style={[
+          styles.modalOverlay,
+          isDesktop && styles.desktopModalOverlay
+        ]}>
+          <View style={[
+            styles.modalContent,
+            { backgroundColor: theme.colors.card },
+            isDesktop && styles.desktopModalContent,
+            isDesktop && { borderColor: theme.colors.border }
+          ]}>
             {/* Header */}
             <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <TouchableOpacity onPress={() => setShowPicker(false)}>
@@ -213,7 +226,10 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
               <View style={{ width: 60 }} />
             </View>
 
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={[styles.modalBody, isDesktop && styles.desktopModalBody]}
+              showsVerticalScrollIndicator={false}
+            >
               {/* Opciones de cámara */}
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
@@ -335,10 +351,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
+  desktopModalOverlay: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   modalContent: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '85%',
+  },
+  desktopModalContent: {
+    borderRadius: 16,
+    maxHeight: '80%',
+    width: '90%',
+    maxWidth: 600,
+    borderWidth: 1,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
+      },
+    }),
   },
   modalHeader: {
     flexDirection: 'row',
@@ -357,6 +389,9 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: 20,
+  },
+  desktopModalBody: {
+    maxHeight: 500,
   },
   section: {
     marginBottom: 30,

@@ -70,13 +70,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signUp = async (email: string, password: string, displayName?: string): Promise<void> => {
     try {
-      const result = await createUserWithEmailAndPassword(auth, email, password);
-      
-      if (displayName && result.user) {
-        await updateProfile(result.user, {
-          displayName: displayName
-        });
-      }
+      // Solo crear el usuario, NO actualizar el displayName aquí
+      // El displayName se configurará en el onboarding
+      await createUserWithEmailAndPassword(auth, email, password);
     } catch (error) {
       throw error;
     }
