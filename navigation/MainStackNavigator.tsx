@@ -171,21 +171,22 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     width: '100%',
-    alignSelf: 'center',
+    justifyContent: 'center',
+    alignItems: 'stretch',
   },
   leftSidebar: {
-    width: 300,
+    width: 280,
     borderRightWidth: 0.5,
   },
   mainContent: {
     flex: 1,
     minWidth: 0,
-    maxWidth: 600,
+    maxWidth: 700,
     borderLeftWidth: Platform.OS === 'web' ? 0.5 : 0,
     borderRightWidth: Platform.OS === 'web' ? 0.5 : 0,
   },
   rightSidebar: {
-    width: 300,
+    width: 320,
     borderLeftWidth: 0.5,
   },
 });
