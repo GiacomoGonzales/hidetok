@@ -26,13 +26,11 @@ export const useUserProfile = () => {
 
         // Si no existe, crear uno nuevo
         if (!profile) {
-          const newProfileData: Omit<UserProfile, 'id'> = {
+          // Preparar datos base del perfil
+          const baseProfileData = {
             uid: user.uid,
             displayName: user.displayName || user.email?.split('@')[0] || 'Usuario Anónimo',
             email: user.email || '',
-            ...(user.photoURL && { photoURL: user.photoURL }), // Solo incluir si existe
-            avatarType: user.photoURL ? 'custom' : 'predefined',
-            avatarId: user.photoURL ? undefined : 'male', // Avatar por defecto
             bio: '',
             followers: 0,
             following: 0,
@@ -41,11 +39,29 @@ export const useUserProfile = () => {
             updatedAt: Timestamp.now(),
           };
 
+          // Agregar campos de avatar según el tipo de autenticación
+          const newProfileData: Omit<UserProfile, 'id'> = user.photoURL
+            ? {
+                ...baseProfileData,
+                photoURL: user.photoURL,
+                avatarType: 'custom' as const,
+                // NO incluir avatarId cuando tiene photoURL
+              }
+            : {
+                ...baseProfileData,
+                avatarType: 'predefined' as const,
+                avatarId: 'male', // Avatar por defecto para usuarios anónimos
+              };
+
+          console.log('📝 Creando nuevo perfil:', newProfileData);
+
           const profileId = await usersService.create(newProfileData);
           profile = {
             id: profileId,
             ...newProfileData,
           };
+
+          console.log('✅ Perfil creado exitosamente:', profileId);
         }
 
         setUserProfile(profile);
