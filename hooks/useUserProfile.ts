@@ -8,6 +8,7 @@ export const useUserProfile = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     const loadUserProfile = async () => {
@@ -75,14 +76,32 @@ export const useUserProfile = () => {
     };
 
     loadUserProfile();
-  }, [user]);
+  }, [user, refreshTrigger]);
 
   const updateProfile = async (updates: Partial<Omit<UserProfile, 'id' | 'uid' | 'createdAt'>>) => {
     if (!userProfile?.id) return;
 
     try {
-      await usersService.update(userProfile.id, updates);
-      setUserProfile(prev => prev ? { ...prev, ...updates } : null);
+      // Agregar updatedAt al update
+      const updatesWithTimestamp = {
+        ...updates,
+        updatedAt: Timestamp.now(),
+      };
+
+      await usersService.update(userProfile.id, updatesWithTimestamp);
+
+      // Actualizar estado local inmediatamente para forzar re-render
+      setUserProfile(prev => {
+        if (!prev) return null;
+        const newProfile = { ...prev, ...updatesWithTimestamp };
+        console.log('✅ Perfil actualizado localmente:', newProfile);
+        return newProfile;
+      });
+
+      // Forzar refresh para asegurar que MainStackNavigator detecte el cambio
+      setTimeout(() => {
+        setRefreshTrigger(prev => prev + 1);
+      }, 100);
     } catch (err) {
       console.error('Error updating profile:', err);
       throw new Error('Error al actualizar el perfil');

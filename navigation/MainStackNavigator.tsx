@@ -52,9 +52,18 @@ const MainStackNavigator: React.FC = () => {
     userProfile.displayName === user.email?.split('@')[0] ||
     userProfile.displayName === 'Usuario Anónimo';
 
+  console.log('🔍 Verificando onboarding:', {
+    userProfile: userProfile?.displayName,
+    needsOnboarding,
+    email: user.email
+  });
+
   if (needsOnboarding) {
+    console.log('📝 Mostrando OnboardingScreen');
     return <OnboardingScreen />;
   }
+
+  console.log('✅ Mostrando Main App');
 
   // Usuario autenticado, mostrar la app principal
   return (
