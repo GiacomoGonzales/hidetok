@@ -6,8 +6,6 @@ import {
   createUserWithEmailAndPassword,
   signInAnonymously as firebaseSignInAnonymously,
   signInWithCredential,
-  signInWithPopup,
-  GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
   updateProfile,
@@ -16,6 +14,16 @@ import {
 import { auth } from '../config/firebase';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
+
+// Solo importar módulos de web cuando estemos en plataforma web
+let signInWithPopup: any;
+let GoogleAuthProvider: any;
+
+if (Platform.OS === 'web') {
+  const webAuth = require('firebase/auth');
+  signInWithPopup = webAuth.signInWithPopup;
+  GoogleAuthProvider = webAuth.GoogleAuthProvider;
+}
 
 if (Platform.OS !== 'web') {
   WebBrowser.maybeCompleteAuthSession();
