@@ -8,10 +8,10 @@ import { SPACING, ICON_SIZE } from '../constants/design';
 import { scale } from '../utils/scale';
 
 interface HeaderProps {
-  onSearchPress: () => void;
+  onNotificationsPress?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onSearchPress }) => {
+const Header: React.FC<HeaderProps> = ({ onNotificationsPress }) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -45,11 +45,11 @@ const Header: React.FC<HeaderProps> = ({ onSearchPress }) => {
           <View style={styles.actions}>
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={onSearchPress}
+              onPress={onNotificationsPress}
               activeOpacity={0.7}
             >
               <Ionicons
-                name="search"
+                name="notifications-outline"
                 size={ICON_SIZE.lg}
                 color={theme.colors.text}
               />

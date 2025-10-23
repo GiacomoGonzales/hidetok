@@ -8,6 +8,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import MainTabsScreen from '../screens/MainTabsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import SearchScreen from '../screens/SearchScreen';
+import CreateScreen from '../screens/CreateScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import AuthStackNavigator from './AuthStackNavigator';
@@ -20,6 +21,7 @@ export type MainStackParamList = {
   Main: undefined;
   Settings: undefined;
   Search: undefined;
+  Create: undefined;
   PostDetail: {
     post: Post;
   };
@@ -162,6 +164,33 @@ const MainStackNavigator: React.FC = () => {
             </View>
           ) : (
             <SearchScreen {...props} />
+          )
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="Create"
+        options={{
+          presentation: Platform.OS === 'web' ? 'card' : 'modal',
+        }}
+      >
+        {(props) => (
+          isDesktop ? (
+            <View style={[styles.desktopContainer, { backgroundColor: theme.colors.background }]}>
+              <View style={styles.leftSidebar}>
+                <Sidebar />
+              </View>
+              <View style={[styles.mainContent, {
+                borderLeftColor: theme.colors.border,
+                borderRightColor: theme.colors.border,
+              }]}>
+                <CreateScreen {...props} />
+              </View>
+              <View style={styles.rightSidebar}>
+                <RightSidebar />
+              </View>
+            </View>
+          ) : (
+            <CreateScreen {...props} />
           )
         )}
       </Stack.Screen>

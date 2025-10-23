@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
@@ -57,6 +58,10 @@ const CreateScreen: React.FC = () => {
 
   const handleProfilePress = () => {
     navigation.navigate('Settings' as never);
+  };
+
+  const handleClose = () => {
+    navigation.goBack();
   };
 
   // Función para seleccionar imagen de la galería
@@ -302,10 +307,10 @@ const CreateScreen: React.FC = () => {
         '¡Publicado!',
         'Tu post ha sido publicado exitosamente',
         [
-          { 
-            text: 'Ver en Feed', 
+          {
+            text: 'Ver en Feed',
             onPress: () => {
-              navigation.navigate('HomeStack' as never, { screen: 'Home' } as never);
+              navigation.goBack(); // Cerrar el modal
             }
           },
           { text: 'Crear otro', style: 'default' },
@@ -326,7 +331,7 @@ const CreateScreen: React.FC = () => {
   const renderTextInput = () => (
     <View style={styles.textInputSection}>
       <TextInput
-        style={[styles.textInput, { 
+        style={[styles.textInput, {
           color: theme.colors.text,
           borderColor: isTextOverLimit ? theme.colors.error : theme.colors.border,
         }]}
@@ -337,7 +342,7 @@ const CreateScreen: React.FC = () => {
         multiline
         maxLength={maxTextLength + 50} // Permitir exceso para mostrar error
         textAlignVertical="top"
-        autoFocus
+        autoFocus={false}
       />
       
       {/* Contador de caracteres */}
@@ -466,12 +471,16 @@ const CreateScreen: React.FC = () => {
   );
 
   return (
-    <KeyboardAvoidingView
+    <SafeAreaView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 20}
+      edges={['top']}
     >
-      <ScrollView
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView
         style={styles.content}
         contentContainerStyle={[
           styles.scrollContent,
@@ -480,31 +489,31 @@ const CreateScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header principal */}
-        <Header 
-          onSearchPress={handleSearchPress}
-          onProfilePress={handleProfilePress}
-        />
-        
-        {/* Header de crear post */}
-        <View style={[styles.header, { 
+        {/* Barra superior con botón de cerrar */}
+        <View style={[styles.modalHeader, {
           backgroundColor: theme.colors.background,
           borderBottomColor: theme.colors.border,
         }]}>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={handleClose}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="close" size={scale(28)} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
             Crear Post
           </Text>
-          <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>
-            Comparte de forma anónima
-          </Text>
+          <View style={styles.placeholder} />
         </View>
 
         {renderTextInput()}
         {renderMediaPreview()}
         {renderMediaActions()}
         {renderPublishSection()}
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
@@ -512,25 +521,29 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.lg,
-    borderBottomWidth: scale(0.5),
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: FONT_WEIGHT.bold,
-    marginBottom: scale(4),
-  },
-  headerSubtitle: {
-    fontSize: FONT_SIZE.sm,
-  },
   content: {
     flex: 1,
   },
   scrollContent: {
     padding: SPACING.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: scale(0.5),
+  },
+  closeButton: {
+    padding: SPACING.xs,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+  },
+  placeholder: {
+    width: scale(28),
   },
   textInputSection: {
     marginBottom: SPACING.xxl,

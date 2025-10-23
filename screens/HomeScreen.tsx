@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,17 +7,16 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { useUserProfile } from '../contexts/UserProfileContext';
-import { useScroll } from '../contexts/ScrollContext';
 import { postsService, Post } from '../services/firestoreService';
 import PostCard from '../components/PostCard';
 import Header from '../components/Header';
 import ResponsiveLayout from '../components/ResponsiveLayout';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
-import { MainStackParamList } from '../navigation/MainStackNavigator';
+import { HomeStackParamList } from '../navigation/HomeStackNavigator';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS } from '../constants/design';
 import { scale } from '../utils/scale';
 
-type HomeScreenNavigationProp = StackNavigationProp<MainStackParamList>;
+type HomeScreenNavigationProp = StackNavigationProp<HomeStackParamList>;
 
 const HomeScreen: React.FC = () => {
   const { theme } = useTheme();
@@ -25,18 +24,15 @@ const HomeScreen: React.FC = () => {
   const { userProfile } = useUserProfile();
   const { contentMaxWidth, isDesktop } = useResponsive();
   const navigation = useNavigation<HomeScreenNavigationProp>();
-  const { setIsScrollingDown } = useScroll();
   const [activeTab, setActiveTab] = useState<'following' | 'foryou'>('foryou');
   const [refreshing, setRefreshing] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const scrollY = useRef(0);
-  const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Función de navegación para el header
-  const handleSearchPress = () => {
-    navigation.navigate('Search');
+  const handleNotificationsPress = () => {
+    navigation.navigate('Notifications');
   };
 
   // Cargar posts al iniciar
@@ -123,32 +119,8 @@ const HomeScreen: React.FC = () => {
   const handlePostPress = (post: Post) => {
     // Solo navegar si el post tiene imágenes
     if (post.imageUrls && post.imageUrls.length > 0) {
-      navigation.navigate('PostDetail', { post });
+      (navigation as any).navigate('PostDetail', { post });
     }
-  };
-
-  // Manejar el scroll
-  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const currentScrollY = event.nativeEvent.contentOffset.y;
-    const scrollDiff = currentScrollY - scrollY.current;
-
-    // Solo detectar scroll si hay un movimiento significativo (más de 5px)
-    if (Math.abs(scrollDiff) > scale(5)) {
-      const isGoingDown = scrollDiff > 0;
-      setIsScrollingDown(isGoingDown);
-
-      // Limpiar timeout previo
-      if (scrollTimeout.current) {
-        clearTimeout(scrollTimeout.current);
-      }
-
-      // Después de 150ms sin scroll, resetear a transparente=false
-      scrollTimeout.current = setTimeout(() => {
-        setIsScrollingDown(false);
-      }, 150);
-    }
-
-    scrollY.current = currentScrollY;
   };
 
   const renderTabButton = (tab: 'following' | 'foryou', label: string) => (
@@ -236,14 +208,10 @@ const HomeScreen: React.FC = () => {
     );
   }
 
-  const renderHeader = () => (
+  const renderListHeader = () => (
     <View>
       {/* Header - solo en móvil */}
-      {!isDesktop && (
-        <Header
-          onSearchPress={handleSearchPress}
-        />
-      )}
+      {!isDesktop && <Header onNotificationsPress={handleNotificationsPress} />}
 
       {/* Tabs */}
       <View style={[styles.tabContainer, { borderBottomColor: theme.colors.border }]}>
@@ -263,7 +231,7 @@ const HomeScreen: React.FC = () => {
             shadowRadius: theme.dark ? scale(8) : scale(4),
           }
         ]}
-        onPress={() => navigation.navigate('Create' as never)}
+        onPress={() => (navigation as any).navigate('Create')}
         activeOpacity={0.7}
       >
         <View style={styles.quickPostContent}>
@@ -300,13 +268,11 @@ const HomeScreen: React.FC = () => {
         data={getFilteredPosts()}
         renderItem={renderPost}
         keyExtractor={item => item.id || item.userId}
-        ListHeaderComponent={renderHeader}
+        ListHeaderComponent={renderListHeader}
         contentContainerStyle={[
           getFilteredPosts().length === 0 && styles.emptyContainer
         ]}
         showsVerticalScrollIndicator={false}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -334,7 +300,7 @@ const HomeScreen: React.FC = () => {
                   shadowRadius: scale(12),
                 }
               ]}
-              onPress={() => navigation.navigate('Create' as never)}
+              onPress={() => (navigation as any).navigate('Create')}
             >
               <Text style={styles.createFirstPostText}>Crear mi primer post</Text>
             </TouchableOpacity>

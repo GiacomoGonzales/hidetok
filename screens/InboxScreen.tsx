@@ -31,8 +31,8 @@ const InboxScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   // Función de navegación para el header
-  const handleSearchPress = () => {
-    navigation.navigate('Search' as never);
+  const handleNotificationsPress = () => {
+    (navigation as any).navigate('Notifications');
   };
 
   // Cargar conversaciones y suscribirse a cambios en tiempo real
@@ -245,7 +245,7 @@ const InboxScreen: React.FC = () => {
       {/* Header principal - solo en móvil */}
       {!isDesktop && (
         <Header
-          onSearchPress={handleSearchPress}
+          onNotificationsPress={handleNotificationsPress}
         />
       )}
 

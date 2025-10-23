@@ -110,8 +110,8 @@ const ProfileScreen: React.FC = () => {
   }, [user, userProfile?.id]); // Recargar cuando cambie el usuario o se cree el perfil
 
   // Función de navegación para el header
-  const handleSearchPress = () => {
-    navigation.navigate('Search' as never);
+  const handleNotificationsPress = () => {
+    (navigation as any).navigate('Notifications');
   };
 
   // Función para recargar posts (útil después de crear un nuevo post)
@@ -390,7 +390,7 @@ const ProfileScreen: React.FC = () => {
           {/* Header principal - solo en móvil */}
           {!isDesktop && (
             <Header
-              onSearchPress={handleSearchPress}
+              onNotificationsPress={handleNotificationsPress}
             />
           )}
 

@@ -93,7 +93,7 @@ const SearchScreen: React.FC = () => {
             onChangeText={setSearchQuery}
             autoCorrect={false}
             autoCapitalize="none"
-            autoFocus={!isDesktop}
+            autoFocus={false}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={handleClearSearch}>
