@@ -1,9 +1,10 @@
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 console.log('🔥 Starting Firebase initialization...');
 
@@ -66,11 +67,18 @@ try {
   app = initializeApp(firebaseConfig);
   console.log('✅ Firebase app initialized');
 
-  // Inicializar servicios de Firebase con persistencia AsyncStorage para React Native
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage)
-  });
-  console.log('✅ Firebase Auth initialized with AsyncStorage persistence');
+  // Inicializar servicios de Firebase con persistencia según la plataforma
+  if (Platform.OS === 'web') {
+    // En web, usar getAuth normal (persistencia por defecto en localStorage)
+    auth = getAuth(app);
+    console.log('✅ Firebase Auth initialized for web');
+  } else {
+    // En React Native (iOS/Android), usar AsyncStorage
+    auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage)
+    });
+    console.log('✅ Firebase Auth initialized with AsyncStorage persistence');
+  }
 
   db = getFirestore(app);
   console.log('✅ Firebase Firestore initialized');
