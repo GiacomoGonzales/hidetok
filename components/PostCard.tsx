@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,10 @@ import {
   Dimensions,
   Share,
   Alert,
-  Linking
+  Linking,
+  ScrollView,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
@@ -17,30 +20,79 @@ import { Post } from '../services/firestoreService';
 import { formatNumber, getRelativeTime } from '../data/mockData';
 import AvatarDisplay from './avatars/AvatarDisplay';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, ICON_SIZE } from '../constants/design';
+import { scale } from '../utils/scale';
 
 interface PostCardProps {
   post: Post;
   onLike: (postId: string) => void;
   onComment: (postId: string) => void;
-  onPrivateMessage: (postId: string) => void;
+  onPrivateMessage: (userId: string, userData?: { displayName: string; avatarType?: string; avatarId?: string; photoURL?: string }) => void;
   onPress?: (post: Post) => void;
 }
 
 const { width: screenWidth } = Dimensions.get('window');
-const mediaSize = (screenWidth - 48) / 2; // Para grilla 2x2
+const CARD_HORIZONTAL_PADDING = SPACING.lg; // 16px cada lado
+const CARD_MAX_WIDTH = 700; // Ancho máximo del feed en desktop
+const MIN_IMAGE_HEIGHT = scale(200);
+const MAX_IMAGE_HEIGHT = scale(500);
 
-const PostCard: React.FC<PostCardProps> = ({ 
-  post, 
-  onLike, 
-  onComment, 
+const getCarouselWidth = () => {
+  const availableWidth = Math.min(screenWidth, scale(CARD_MAX_WIDTH));
+  return availableWidth - (CARD_HORIZONTAL_PADDING * 2);
+};
+
+interface ImageDimensions {
+  width: number;
+  height: number;
+  aspectRatio: number;
+}
+
+const PostCard: React.FC<PostCardProps> = ({
+  post,
+  onLike,
+  onComment,
   onPrivateMessage,
-  onPress 
+  onPress
 }) => {
   const { theme } = useTheme();
   const { userProfile: postAuthor, loading: loadingAuthor } = useUserById(post.userId);
   // Para posts reales, no tenemos info de si el usuario le dio like (por ahora)
   const [isLiked, setIsLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(post.likes);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [imageDimensions, setImageDimensions] = useState<ImageDimensions | null>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const carouselWidth = getCarouselWidth();
+
+  // Cargar dimensiones de la primera imagen
+  useEffect(() => {
+    if (post.imageUrls && post.imageUrls.length > 0) {
+      Image.getSize(
+        post.imageUrls[0],
+        (width, height) => {
+          const aspectRatio = width / height;
+          setImageDimensions({ width, height, aspectRatio });
+        },
+        (error) => {
+          console.error('Error loading image dimensions:', error);
+          // Usar dimensiones por defecto si falla
+          setImageDimensions({ width: 1, height: 1, aspectRatio: 1 });
+        }
+      );
+    }
+  }, [post.imageUrls]);
+
+  const getImageHeight = () => {
+    if (!imageDimensions) {
+      return scale(280); // Altura por defecto mientras carga
+    }
+
+    // Calcular altura basada en el aspect ratio
+    const calculatedHeight = carouselWidth / imageDimensions.aspectRatio;
+
+    // Limitar entre MIN y MAX
+    return Math.max(MIN_IMAGE_HEIGHT, Math.min(MAX_IMAGE_HEIGHT, calculatedHeight));
+  };
 
   const handleLike = () => {
     const newIsLiked = !isLiked;
@@ -94,40 +146,88 @@ const PostCard: React.FC<PostCardProps> = ({
     );
   };
 
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(offsetX / carouselWidth);
+    setCurrentImageIndex(index);
+  };
+
   const renderMedia = () => {
     if (!post.imageUrls || post.imageUrls.length === 0) return null;
+
+    const imageHeight = getImageHeight();
 
     if (post.imageUrls.length === 1) {
       return (
         <View style={styles.singleMediaContainer}>
           <Image
             source={{ uri: post.imageUrls[0] }}
-            style={[styles.singleMedia, { backgroundColor: theme.colors.surface }]}
+            style={[
+              styles.singleMedia,
+              {
+                backgroundColor: theme.colors.surface,
+                height: imageHeight,
+              }
+            ]}
             resizeMode="cover"
           />
         </View>
       );
     }
 
-    // Grilla para múltiples imágenes
+    // Carrusel para múltiples imágenes
     return (
-      <View style={styles.mediaGrid}>
-        {post.imageUrls.slice(0, 4).map((imageUrl, index) => (
-          <View key={index} style={styles.mediaGridItem}>
-            <Image
-              source={{ uri: imageUrl }}
-              style={[styles.gridMedia, { backgroundColor: theme.colors.surface }]}
-              resizeMode="cover"
+      <View style={styles.carouselContainer}>
+        <ScrollView
+          ref={scrollViewRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          style={styles.carousel}
+        >
+          {post.imageUrls.map((imageUrl, index) => (
+            <View key={index} style={[styles.carouselImageContainer, { width: carouselWidth }]}>
+              <Image
+                source={{ uri: imageUrl }}
+                style={[
+                  styles.carouselImage,
+                  {
+                    backgroundColor: theme.colors.surface,
+                    height: imageHeight,
+                  }
+                ]}
+                resizeMode="cover"
+              />
+            </View>
+          ))}
+        </ScrollView>
+
+        {/* Indicadores de página */}
+        <View style={styles.pageIndicatorContainer}>
+          {post.imageUrls.map((_, index) => (
+            <View
+              key={index}
+              style={[
+                styles.pageIndicator,
+                {
+                  backgroundColor: index === currentImageIndex
+                    ? theme.colors.accent
+                    : theme.colors.surface,
+                  opacity: index === currentImageIndex ? 1 : 0.5,
+                }
+              ]}
             />
-            {index === 3 && post.imageUrls!.length > 4 && (
-              <View style={styles.moreMediaOverlay}>
-                <Text style={styles.moreMediaText}>
-                  +{post.imageUrls!.length - 4}
-                </Text>
-              </View>
-            )}
-          </View>
-        ))}
+          ))}
+        </View>
+
+        {/* Contador de imágenes */}
+        <View style={[styles.imageCounter, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
+          <Text style={styles.imageCounterText}>
+            {currentImageIndex + 1}/{post.imageUrls.length}
+          </Text>
+        </View>
       </View>
     );
   };
@@ -137,9 +237,9 @@ const PostCard: React.FC<PostCardProps> = ({
       style={[styles.container, {
         backgroundColor: theme.colors.card,
         shadowColor: theme.dark ? theme.colors.glow : '#000',
-        shadowOffset: { width: 0, height: 2 },
+        shadowOffset: { width: 0, height: scale(2) },
         shadowOpacity: theme.dark ? 0.2 : 0.08,
-        shadowRadius: theme.dark ? 12 : 8,
+        shadowRadius: theme.dark ? scale(12) : scale(8),
       }]}
       onPress={() => onPress?.(post)}
       activeOpacity={0.98}
@@ -149,13 +249,13 @@ const PostCard: React.FC<PostCardProps> = ({
         {loadingAuthor ? (
           // Placeholder mientras carga el autor
           <View style={[styles.avatar, { backgroundColor: theme.colors.surface }]}>
-            <Ionicons name="person" size={20} color={theme.colors.textSecondary} />
+            <Ionicons name="person" size={scale(20)} color={theme.colors.textSecondary} />
           </View>
         ) : postAuthor ? (
           // Avatar real del autor con indicador de anonimato
           <View style={styles.avatarContainer}>
             <AvatarDisplay
-              size={40}
+              size={scale(40)}
               avatarType={postAuthor.avatarType || 'predefined'}
               avatarId={postAuthor.avatarId || 'male'}
               photoURL={postAuthor.photoURL}
@@ -163,7 +263,7 @@ const PostCard: React.FC<PostCardProps> = ({
               showBorder={false}
             />
             <View style={[styles.anonymousBadge, { backgroundColor: theme.colors.surface }]}>
-              <Ionicons name="eye-off" size={10} color={theme.colors.accent} />
+              <Ionicons name="eye-off" size={scale(10)} color={theme.colors.accent} />
             </View>
           </View>
         ) : (
@@ -201,7 +301,7 @@ const PostCard: React.FC<PostCardProps> = ({
               shadowColor: theme.colors.like,
               shadowOffset: { width: 0, height: 0 },
               shadowOpacity: 0.2,
-              shadowRadius: 4,
+              shadowRadius: scale(4),
             }
           ]}
           onPress={handleLike}
@@ -236,7 +336,12 @@ const PostCard: React.FC<PostCardProps> = ({
 
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => onPrivateMessage(post.id!)}
+          onPress={() => onPrivateMessage(post.userId, postAuthor ? {
+            displayName: postAuthor.displayName,
+            avatarType: postAuthor.avatarType,
+            avatarId: postAuthor.avatarId,
+            photoURL: postAuthor.photoURL,
+          } : undefined)}
           activeOpacity={0.7}
         >
           <Ionicons
@@ -260,7 +365,7 @@ const PostCard: React.FC<PostCardProps> = ({
             color={theme.colors.textSecondary}
           />
           <Text style={[styles.actionText, { color: theme.colors.textSecondary }]}>
-            {formatNumber(post.sharesCount)}
+            {formatNumber(post.shares)}
           </Text>
         </TouchableOpacity>
       </View>
@@ -274,9 +379,9 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.lg,
     borderWidth: 0,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scale(2) },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowRadius: scale(8),
     elevation: 2,
   },
   header: {
@@ -292,18 +397,18 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: scale(16),
+    height: scale(16),
+    borderRadius: scale(8),
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
+    borderWidth: scale(1.5),
     borderColor: 'transparent',
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
     marginRight: SPACING.md,
     justifyContent: 'center',
     alignItems: 'center',
@@ -318,8 +423,8 @@ const styles = StyleSheet.create({
   username: {
     fontSize: FONT_SIZE.base,
     fontWeight: FONT_WEIGHT.semibold,
-    marginBottom: 2,
-    letterSpacing: -0.2,
+    marginBottom: scale(2),
+    letterSpacing: scale(-0.2),
   },
   timestamp: {
     fontSize: FONT_SIZE.sm,
@@ -330,10 +435,10 @@ const styles = StyleSheet.create({
   },
   postContent: {
     fontSize: FONT_SIZE.base,
-    lineHeight: 21,
+    lineHeight: scale(21),
     marginBottom: SPACING.md,
     fontWeight: FONT_WEIGHT.regular,
-    letterSpacing: -0.1,
+    letterSpacing: scale(-0.1),
   },
   singleMediaContainer: {
     position: 'relative',
@@ -343,65 +448,67 @@ const styles = StyleSheet.create({
   },
   singleMedia: {
     width: '100%',
-    height: 280,
   },
-  videoOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mediaGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-  },
-  mediaGridItem: {
+  carouselContainer: {
     position: 'relative',
-    borderRadius: BORDER_RADIUS.md,
+    marginTop: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
   },
-  gridMedia: {
-    width: mediaSize,
-    height: mediaSize,
+  carousel: {
+    borderRadius: BORDER_RADIUS.lg,
   },
-  moreMediaOverlay: {
+  carouselImageContainer: {
+    position: 'relative',
+  },
+  carouselImage: {
+    width: '100%',
+  },
+  pageIndicatorContainer: {
     position: 'absolute',
-    top: 0,
+    bottom: SPACING.md,
     left: 0,
     right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
+    flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
+    gap: scale(6),
   },
-  moreMediaText: {
+  pageIndicator: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
+  },
+  imageCounter: {
+    position: 'absolute',
+    top: SPACING.md,
+    right: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: scale(4),
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  imageCounterText: {
     color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.semibold,
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingTop: SPACING.xs,
     justifyContent: 'space-between',
-    maxWidth: 425,
+    maxWidth: scale(425),
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: scale(4),
   },
   actionText: {
     fontSize: FONT_SIZE.sm,
-    marginLeft: 4,
+    marginLeft: scale(4),
     fontWeight: FONT_WEIGHT.regular,
-    letterSpacing: -0.1,
+    letterSpacing: scale(-0.1),
   },
 });
 

@@ -1,24 +1,25 @@
 // Sistema de diseño moderno y minimalista para HideTok
+import { scale } from '../utils/scale';
 
 export const SPACING = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  xxl: 24,
-  xxxl: 32,
+  xs: scale(4),
+  sm: scale(8),
+  md: scale(12),
+  lg: scale(16),
+  xl: scale(20),
+  xxl: scale(24),
+  xxxl: scale(32),
 } as const;
 
 export const FONT_SIZE = {
-  xs: 12,
-  sm: 13,
-  base: 15,
-  md: 16,
-  lg: 18,
-  xl: 20,
-  xxl: 24,
-  xxxl: 32,
+  xs: scale(12),
+  sm: scale(13),
+  base: scale(15),
+  md: scale(16),
+  lg: scale(18),
+  xl: scale(20),
+  xxl: scale(24),
+  xxxl: scale(32),
 } as const;
 
 export const FONT_WEIGHT = {
@@ -30,25 +31,25 @@ export const FONT_WEIGHT = {
 } as const;
 
 export const BORDER_RADIUS = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
+  sm: scale(8),
+  md: scale(12),
+  lg: scale(16),
+  xl: scale(20),
   full: 9999,
 } as const;
 
 export const ICON_SIZE = {
-  xs: 16,
-  sm: 18,
-  md: 20,
-  lg: 24,
-  xl: 28,
+  xs: scale(16),
+  sm: scale(18),
+  md: scale(20),
+  lg: scale(24),
+  xl: scale(28),
 } as const;
 
 export const BUTTON_HEIGHT = {
-  sm: 32,
-  md: 40,
-  lg: 48,
+  sm: scale(32),
+  md: scale(40),
+  lg: scale(48),
 } as const;
 
 export const OPACITY = {

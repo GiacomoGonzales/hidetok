@@ -1,7 +1,7 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useAuth } from '../contexts/AuthContext';
-import { useUserProfile } from '../hooks/useUserProfile';
+import { useUserProfile } from '../contexts/UserProfileContext';
 import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
 import { useResponsive } from '../hooks/useResponsive';
 import { useTheme } from '../contexts/ThemeContext';
@@ -13,7 +13,8 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import AuthStackNavigator from './AuthStackNavigator';
 import Sidebar from '../components/Sidebar';
 import RightSidebar from '../components/RightSidebar';
-import { Post } from '../data/mockData';
+import { Post } from '../services/firestoreService';
+import { scale } from '../utils/scale';
 
 export type MainStackParamList = {
   Main: undefined;
@@ -31,12 +32,25 @@ const MainStackNavigator: React.FC = () => {
   const { userProfile, loading: profileLoading } = useUserProfile();
   const { theme } = useTheme();
   const { isDesktop } = useResponsive();
+  const [isInitialLoad, setIsInitialLoad] = React.useState(true);
+
+  React.useEffect(() => {
+    // Después de que authLoading sea false por primera vez, marcar que ya no es carga inicial
+    if (!authLoading && isInitialLoad) {
+      // Pequeño delay para asegurar que Firebase terminó de verificar
+      const timer = setTimeout(() => {
+        setIsInitialLoad(false);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [authLoading, isInitialLoad]);
 
   // Mostrar loading mientras se verifica la autenticación o el perfil
-  if (authLoading || (user && profileLoading)) {
+  // O durante la carga inicial para evitar flash de login
+  if (authLoading || (user && profileLoading) || isInitialLoad) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6366F1" />
+      <View style={[styles.loadingContainer, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.accent} />
       </View>
     );
   }
@@ -53,17 +67,19 @@ const MainStackNavigator: React.FC = () => {
     userProfile.displayName === 'Usuario Anónimo';
 
   console.log('🔍 Verificando onboarding:', {
-    userProfile: userProfile?.displayName,
+    hasUserProfile: !!userProfile,
+    displayName: userProfile?.displayName,
     needsOnboarding,
-    email: user.email
+    email: user.email,
+    profileLoading,
   });
 
   if (needsOnboarding) {
-    console.log('📝 Mostrando OnboardingScreen');
+    console.log('📝 Mostrando OnboardingScreen - needsOnboarding:', needsOnboarding);
     return <OnboardingScreen />;
   }
 
-  console.log('✅ Mostrando Main App');
+  console.log('✅ Mostrando Main App - displayName:', userProfile?.displayName);
 
   // Usuario autenticado, mostrar la app principal
   return (
@@ -153,7 +169,7 @@ const MainStackNavigator: React.FC = () => {
         name="PostDetail"
         component={PostDetailScreen}
         options={{
-          presentation: 'modal',
+          presentation: Platform.OS === 'web' ? 'card' : 'modal',
         }}
       />
     </Stack.Navigator>
@@ -165,7 +181,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#000',
   },
   desktopContainer: {
     flex: 1,
@@ -175,19 +190,19 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   leftSidebar: {
-    width: 280,
-    borderRightWidth: 0.5,
+    width: scale(280),
+    borderRightWidth: scale(0.5),
   },
   mainContent: {
     flex: 1,
     minWidth: 0,
-    maxWidth: 700,
-    borderLeftWidth: Platform.OS === 'web' ? 0.5 : 0,
-    borderRightWidth: Platform.OS === 'web' ? 0.5 : 0,
+    maxWidth: scale(700),
+    borderLeftWidth: Platform.OS === 'web' ? scale(0.5) : 0,
+    borderRightWidth: Platform.OS === 'web' ? scale(0.5) : 0,
   },
   rightSidebar: {
-    width: 320,
-    borderLeftWidth: 0.5,
+    width: scale(320),
+    borderLeftWidth: scale(0.5),
   },
 });
 

@@ -50,15 +50,43 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
+    // Verificar si hay una sesión guardada en localStorage
+    const checkPersistedSession = () => {
+      if (Platform.OS === 'web') {
+        try {
+          // Firebase persiste la sesión automáticamente en localStorage
+          const persistedAuth = localStorage.getItem('firebase:authUser:' + auth.app.options.apiKey + ':[DEFAULT]');
+          return !!persistedAuth;
+        } catch (error) {
+          return false;
+        }
+      }
+      return false;
+    };
+
+    const hasPersistedSession = checkPersistedSession();
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('🔐 Auth state changed:', {
+        hasUser: !!user,
+        email: user?.email,
+        initializing
+      });
+
       setUser(user);
+
+      // Solo marcar como no loading después de la primera verificación
+      if (initializing) {
+        setInitializing(false);
+      }
       setLoading(false);
     });
 
     return unsubscribe;
-  }, []);
+  }, [initializing]);
 
   const signIn = async (email: string, password: string): Promise<void> => {
     try {

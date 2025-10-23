@@ -39,7 +39,11 @@ const LoginScreen: React.FC = () => {
     setLoading(true);
     try {
       await signIn(email, password);
+      // NO poner loading = false aquí, mantener el spinner hasta que la redirección ocurra
     } catch (error: any) {
+      // Solo en caso de error, volver a mostrar el formulario
+      setLoading(false);
+
       let errorMessage = 'Error al iniciar sesión';
 
       switch (error.code) {
@@ -64,8 +68,6 @@ const LoginScreen: React.FC = () => {
       } else {
         Alert.alert('Error de Autenticación', errorMessage);
       }
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -73,15 +75,17 @@ const LoginScreen: React.FC = () => {
     setLoading(true);
     try {
       await signInWithGoogle();
+      // NO poner loading = false aquí, mantener el spinner hasta que la redirección ocurra
     } catch (error: any) {
+      // Solo en caso de error, volver a mostrar el formulario
+      setLoading(false);
+
       const message = 'Error al iniciar sesión con Google: ' + error.message;
       if (Platform.OS === 'web') {
         alert(message);
       } else {
         Alert.alert('Error', message);
       }
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -89,15 +93,17 @@ const LoginScreen: React.FC = () => {
     setLoading(true);
     try {
       await signInAnonymously();
+      // NO poner loading = false aquí, mantener el spinner hasta que la redirección ocurra
     } catch (error: any) {
+      // Solo en caso de error, volver a mostrar el formulario
+      setLoading(false);
+
       const message = 'Error al acceder de forma anónima: ' + error.message;
       if (Platform.OS === 'web') {
         alert(message);
       } else {
         Alert.alert('Error', message);
       }
-    } finally {
-      setLoading(false);
     }
   };
 

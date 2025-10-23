@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
-import { useUserProfile } from '../hooks/useUserProfile';
+import { useUserProfile } from '../contexts/UserProfileContext';
 import { useScroll } from '../contexts/ScrollContext';
 import { postsService, Post } from '../services/firestoreService';
 import PostCard from '../components/PostCard';
@@ -15,6 +15,7 @@ import ResponsiveLayout from '../components/ResponsiveLayout';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
 import { MainStackParamList } from '../navigation/MainStackNavigator';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS } from '../constants/design';
+import { scale } from '../utils/scale';
 
 type HomeScreenNavigationProp = StackNavigationProp<MainStackParamList>;
 
@@ -97,17 +98,33 @@ const HomeScreen: React.FC = () => {
   };
 
   const handleComment = (postId: string) => {
-    console.log('Open comments for post:', postId);
-    // TODO: Abrir modal de comentarios
+    const post = posts.find(p => p.id === postId);
+    if (post) {
+      navigation.navigate('PostDetail', { post });
+    }
   };
 
-  const handlePrivateMessage = (postId: string) => {
-    console.log('Start private message for post:', postId);
-    // TODO: Crear conversación privada
+  const handlePrivateMessage = (userId: string, userData?: { displayName: string; avatarType?: string; avatarId?: string; photoURL?: string }) => {
+    if (!user || user.uid === userId) return; // No enviar mensaje a sí mismo
+
+    // Navegar a la pantalla de conversación en el tab de Inbox
+    navigation.navigate('Main' as never, {
+      screen: 'Inbox',
+      params: {
+        screen: 'Conversation',
+        params: {
+          otherUserId: userId,
+          otherUserData: userData,
+        },
+      },
+    } as never);
   };
 
   const handlePostPress = (post: Post) => {
-    navigation.navigate('PostDetail', { post });
+    // Solo navegar si el post tiene imágenes
+    if (post.imageUrls && post.imageUrls.length > 0) {
+      navigation.navigate('PostDetail', { post });
+    }
   };
 
   // Manejar el scroll
@@ -116,7 +133,7 @@ const HomeScreen: React.FC = () => {
     const scrollDiff = currentScrollY - scrollY.current;
 
     // Solo detectar scroll si hay un movimiento significativo (más de 5px)
-    if (Math.abs(scrollDiff) > 5) {
+    if (Math.abs(scrollDiff) > scale(5)) {
       const isGoingDown = scrollDiff > 0;
       setIsScrollingDown(isGoingDown);
 
@@ -153,7 +170,7 @@ const HomeScreen: React.FC = () => {
             shadowColor: theme.colors.accent,
             shadowOffset: { width: 0, height: 0 },
             shadowOpacity: 0.5,
-            shadowRadius: 4,
+            shadowRadius: scale(4),
           }
         ]} />
       )}
@@ -206,9 +223,9 @@ const HomeScreen: React.FC = () => {
             {
               backgroundColor: theme.colors.accent,
               shadowColor: theme.colors.accent,
-              shadowOffset: { width: 0, height: 3 },
+              shadowOffset: { width: 0, height: scale(3) },
               shadowOpacity: 0.3,
-              shadowRadius: 8,
+              shadowRadius: scale(8),
             }
           ]}
           onPress={loadPosts}
@@ -241,9 +258,9 @@ const HomeScreen: React.FC = () => {
           {
             backgroundColor: theme.colors.card,
             shadowColor: theme.dark ? theme.colors.glow : '#000',
-            shadowOffset: { width: 0, height: 1 },
+            shadowOffset: { width: 0, height: scale(1) },
             shadowOpacity: theme.dark ? 0.15 : 0.05,
-            shadowRadius: theme.dark ? 8 : 4,
+            shadowRadius: theme.dark ? scale(8) : scale(4),
           }
         ]}
         onPress={() => navigation.navigate('Create' as never)}
@@ -252,7 +269,7 @@ const HomeScreen: React.FC = () => {
         <View style={styles.quickPostContent}>
           {userProfile ? (
             <AvatarDisplay
-              size={40}
+              size={scale(40)}
               avatarType={userProfile.avatarType || 'predefined'}
               avatarId={userProfile.avatarId || 'male'}
               photoURL={userProfile.photoURL}
@@ -261,7 +278,7 @@ const HomeScreen: React.FC = () => {
             />
           ) : (
             <View style={[styles.quickPostAvatar, { backgroundColor: theme.colors.accent }]}>
-              <Ionicons name="person" size={20} color="white" />
+              <Ionicons name="person" size={scale(20)} color="white" />
             </View>
           )}
           <Text style={[styles.quickPostPlaceholder, { color: theme.colors.textSecondary }]}>
@@ -269,8 +286,8 @@ const HomeScreen: React.FC = () => {
           </Text>
         </View>
         <View style={styles.quickPostActions}>
-          <Ionicons name="image-outline" size={20} color={theme.colors.textSecondary} />
-          <Ionicons name="videocam-outline" size={20} color={theme.colors.textSecondary} />
+          <Ionicons name="image-outline" size={scale(20)} color={theme.colors.textSecondary} />
+          <Ionicons name="videocam-outline" size={scale(20)} color={theme.colors.textSecondary} />
         </View>
       </TouchableOpacity>
     </View>
@@ -312,9 +329,9 @@ const HomeScreen: React.FC = () => {
                 {
                   backgroundColor: theme.colors.accent,
                   shadowColor: theme.colors.accent,
-                  shadowOffset: { width: 0, height: 4 },
+                  shadowOffset: { width: 0, height: scale(4) },
                   shadowOpacity: 0.3,
-                  shadowRadius: 12,
+                  shadowRadius: scale(12),
                 }
               ]}
               onPress={() => navigation.navigate('Create' as never)}
@@ -334,7 +351,7 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: 'row',
-    borderBottomWidth: 0.5,
+    borderBottomWidth: scale(0.5),
   },
   tabButton: {
     flex: 1,
@@ -346,14 +363,14 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: FONT_SIZE.base,
     fontWeight: FONT_WEIGHT.medium,
-    letterSpacing: -0.2,
+    letterSpacing: scale(-0.2),
   },
   tabIndicator: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 3,
+    height: scale(3),
   },
   quickPostContainer: {
     flexDirection: 'row',
@@ -374,16 +391,16 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
   quickPostAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
     justifyContent: 'center',
     alignItems: 'center',
   },
   quickPostPlaceholder: {
     fontSize: FONT_SIZE.base,
     fontWeight: FONT_WEIGHT.regular,
-    letterSpacing: -0.2,
+    letterSpacing: scale(-0.2),
   },
   quickPostActions: {
     flexDirection: 'row',
@@ -423,11 +440,11 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: FONT_SIZE.base,
     fontWeight: FONT_WEIGHT.semibold,
-    letterSpacing: -0.2,
+    letterSpacing: scale(-0.2),
   },
   emptyState: {
     alignItems: 'center',
-    paddingVertical: 60,
+    paddingVertical: scale(60),
     paddingHorizontal: SPACING.xxxl,
   },
   emptyTitle: {
@@ -435,11 +452,11 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.bold,
     marginBottom: SPACING.md,
     textAlign: 'center',
-    letterSpacing: -0.5,
+    letterSpacing: scale(-0.5),
   },
   emptySubtitle: {
     fontSize: FONT_SIZE.base,
-    lineHeight: 22,
+    lineHeight: scale(22),
     textAlign: 'center',
     marginBottom: SPACING.xxxl,
     fontWeight: FONT_WEIGHT.regular,
@@ -453,7 +470,7 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: FONT_SIZE.base,
     fontWeight: FONT_WEIGHT.semibold,
-    letterSpacing: -0.2,
+    letterSpacing: scale(-0.2),
   },
 });
 

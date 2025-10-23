@@ -16,7 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useUserProfile } from '../hooks/useUserProfile';
+import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { postsService } from '../services/firestoreService';
 import { uploadPostImage } from '../services/storageService';
@@ -24,9 +24,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { Timestamp } from 'firebase/firestore';
 import Header from '../components/Header';
-
-const { width: screenWidth } = Dimensions.get('window');
-const mediaPreviewSize = (screenWidth - 64) / 2; // Para 2 columnas con espaciado
+import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, ICON_SIZE } from '../constants/design';
+import { scale } from '../utils/scale';
 
 interface MediaItem {
   type: 'image' | 'video';
@@ -382,27 +381,33 @@ const CreateScreen: React.FC = () => {
 
         <View style={styles.mediaGrid}>
           {attachedMedia.map((media, index) => (
-            <View key={media.id} style={styles.mediaPreviewItem}>
+            <View key={media.id} style={[
+              styles.mediaPreviewItem,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              }
+            ]}>
               <Image
                 source={{ uri: media.uri }}
-                style={[styles.mediaPreviewImage, { backgroundColor: theme.colors.surface }]}
+                style={styles.mediaPreviewImage}
                 resizeMode="cover"
               />
-              
+
               {/* Indicador de tipo de media */}
               {media.type === 'video' && (
                 <View style={styles.videoIndicator}>
-                  <Ionicons name="play" size={20} color="white" />
+                  <Ionicons name="play" size={scale(20)} color="white" />
                 </View>
               )}
-              
+
               {/* Botón de eliminar */}
               <TouchableOpacity
-                style={styles.removeMediaButton}
+                style={[styles.removeMediaButton, { backgroundColor: theme.colors.error }]}
                 onPress={() => removeMedia(media.id)}
                 activeOpacity={0.8}
               >
-                <Ionicons name="close" size={16} color="white" />
+                <Ionicons name="close" size={scale(16)} color="white" />
               </TouchableOpacity>
             </View>
           ))}
@@ -414,7 +419,7 @@ const CreateScreen: React.FC = () => {
   const renderMediaActions = () => (
     <View style={styles.mediaActionsSection}>
       <TouchableOpacity
-        style={[styles.mediaActionButton, { 
+        style={[styles.mediaActionButton, {
           backgroundColor: theme.colors.surface,
           borderColor: theme.colors.border,
           opacity: attachedMedia.length >= maxImages ? 0.5 : 1,
@@ -423,7 +428,7 @@ const CreateScreen: React.FC = () => {
         disabled={attachedMedia.length >= maxImages}
         activeOpacity={0.8}
       >
-        <Ionicons name="camera" size={24} color={theme.colors.accent} />
+        <Ionicons name="camera" size={ICON_SIZE.lg} color={theme.colors.accent} />
         <Text style={[styles.mediaActionText, { color: theme.colors.text }]}>
           Agregar Imágenes
         </Text>
@@ -448,36 +453,15 @@ const CreateScreen: React.FC = () => {
         {isPublishing ? (
           <>
             <ActivityIndicator size="small" color="white" />
-            <Text style={styles.publishButtonText}>
-              {attachedMedia.length > 0 ? 'Subiendo imágenes...' : 'Publicando...'}
-            </Text>
+            <Text style={styles.publishButtonText}>Publicando...</Text>
           </>
         ) : (
           <>
-            <Ionicons name="send" size={20} color="white" />
+            <Ionicons name="send" size={ICON_SIZE.md} color="white" />
             <Text style={styles.publishButtonText}>Publicar</Text>
           </>
         )}
       </TouchableOpacity>
-
-      {/* Tips de publicación */}
-      <View style={styles.tips}>
-        <Text style={[styles.tipsTitle, { color: theme.colors.text }]}>
-          💡 Tips para tu post:
-        </Text>
-        <Text style={[styles.tipText, { color: theme.colors.textSecondary }]}>
-          • Usa #hashtags para que sea más descubrible
-        </Text>
-        <Text style={[styles.tipText, { color: theme.colors.textSecondary }]}>
-          • Las imágenes obtienen más interacción
-        </Text>
-        <Text style={[styles.tipText, { color: theme.colors.textSecondary }]}>
-          • Tu post se guardará permanentemente en el feed
-        </Text>
-        <Text style={[styles.tipText, { color: theme.colors.textSecondary }]}>
-          • Otros usuarios podrán darle like y comentar
-        </Text>
-      </View>
     </View>
   );
 
@@ -529,51 +513,51 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: 0.5,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+    borderBottomWidth: scale(0.5),
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 4,
+    fontSize: FONT_SIZE.xl,
+    fontWeight: FONT_WEIGHT.bold,
+    marginBottom: scale(4),
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: FONT_SIZE.sm,
   },
   content: {
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    padding: SPACING.lg,
   },
   textInputSection: {
-    marginBottom: 24,
+    marginBottom: SPACING.xxl,
   },
   textInput: {
-    minHeight: 120,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    lineHeight: 24,
+    minHeight: scale(120),
+    borderWidth: scale(1),
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.lg,
+    fontSize: FONT_SIZE.md,
+    lineHeight: scale(24),
   },
   textCounter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    marginTop: 8,
-    gap: 8,
+    marginTop: SPACING.sm,
+    gap: SPACING.sm,
   },
   counterText: {
-    fontSize: 14,
+    fontSize: FONT_SIZE.sm,
   },
   progressCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
+    width: scale(24),
+    height: scale(24),
+    borderRadius: scale(12),
+    borderWidth: scale(2),
     position: 'relative',
     overflow: 'hidden',
   },
@@ -586,26 +570,27 @@ const styles = StyleSheet.create({
     transformOrigin: 'right center',
   },
   mediaPreviewSection: {
-    marginBottom: 24,
+    marginBottom: SPACING.xxl,
   },
   mediaHeader: {
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   mediaSectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
   },
   mediaGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: SPACING.md,
   },
   mediaPreviewItem: {
     position: 'relative',
-    width: mediaPreviewSize,
-    height: mediaPreviewSize,
-    borderRadius: 8,
+    width: scale(140),
+    height: scale(140),
+    borderRadius: BORDER_RADIUS.md,
     overflow: 'hidden',
+    borderWidth: scale(1),
   },
   mediaPreviewImage: {
     width: '100%',
@@ -613,71 +598,60 @@ const styles = StyleSheet.create({
   },
   videoIndicator: {
     position: 'absolute',
-    top: 8,
-    left: 8,
+    top: SPACING.sm,
+    left: SPACING.sm,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 12,
-    padding: 4,
+    borderRadius: BORDER_RADIUS.md,
+    padding: scale(4),
   },
   removeMediaButton: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 12,
-    padding: 4,
+    top: SPACING.sm,
+    right: SPACING.sm,
+    borderRadius: BORDER_RADIUS.full,
+    padding: scale(6),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: scale(2) },
+    shadowOpacity: 0.3,
+    shadowRadius: scale(4),
+    elevation: 3,
   },
   mediaActionsSection: {
-    marginBottom: 24,
+    marginBottom: SPACING.xxl,
   },
   mediaActionButton: {
     flexDirection: 'column',
     alignItems: 'center',
-    padding: 20,
-    borderRadius: 12,
-    borderWidth: 2,
+    padding: SPACING.xl,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: scale(2),
     borderStyle: 'dashed',
   },
   mediaActionText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 8,
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
+    marginTop: SPACING.sm,
   },
   mediaActionSubtext: {
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: FONT_SIZE.xs,
+    marginTop: scale(4),
   },
   publishSection: {
-    marginBottom: 32,
+    marginBottom: SPACING.xxxl,
   },
   publishButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 12,
-    gap: 8,
-    marginBottom: 24,
+    paddingVertical: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.sm,
+    marginBottom: SPACING.xxl,
   },
   publishButtonText: {
     color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  tips: {
-    padding: 16,
-    borderRadius: 8,
-    backgroundColor: 'rgba(139, 92, 246, 0.1)',
-  },
-  tipsTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  tipText: {
-    fontSize: 12,
-    marginBottom: 4,
-    lineHeight: 16,
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
   },
 });
 

@@ -1,9 +1,31 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useAuth } from './AuthContext';
 import { usersService, UserProfile } from '../services/firestoreService';
 import { Timestamp } from 'firebase/firestore';
 
+interface UserProfileContextType {
+  userProfile: UserProfile | null;
+  loading: boolean;
+  error: string | null;
+  updateProfile: (updates: Partial<Omit<UserProfile, 'id' | 'uid' | 'createdAt'>>) => Promise<void>;
+  refreshProfile: () => void;
+}
+
+const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
+
 export const useUserProfile = () => {
+  const context = useContext(UserProfileContext);
+  if (!context) {
+    throw new Error('useUserProfile debe ser usado dentro de un UserProfileProvider');
+  }
+  return context;
+};
+
+interface UserProfileProviderProps {
+  children: React.ReactNode;
+}
+
+export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ children }) => {
   const { user } = useAuth();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -21,6 +43,8 @@ export const useUserProfile = () => {
       try {
         setLoading(true);
         setError(null);
+
+        console.log('🔄 [UserProfileContext] Cargando perfil para usuario:', user.uid);
 
         // Buscar perfil existente
         let profile = await usersService.getByUid(user.uid);
@@ -46,15 +70,14 @@ export const useUserProfile = () => {
                 ...baseProfileData,
                 photoURL: user.photoURL,
                 avatarType: 'custom' as const,
-                // NO incluir avatarId cuando tiene photoURL
               }
             : {
                 ...baseProfileData,
                 avatarType: 'predefined' as const,
-                avatarId: 'male', // Avatar por defecto para usuarios anónimos
+                avatarId: 'male',
               };
 
-          console.log('📝 Creando nuevo perfil:', newProfileData);
+          console.log('📝 [UserProfileContext] Creando nuevo perfil:', newProfileData);
 
           const profileId = await usersService.create(newProfileData);
           profile = {
@@ -62,14 +85,14 @@ export const useUserProfile = () => {
             ...newProfileData,
           };
 
-          console.log('✅ Perfil creado exitosamente:', profileId);
+          console.log('✅ [UserProfileContext] Perfil creado exitosamente:', profileId);
         } else {
-          console.log('📥 Perfil cargado:', profile.displayName);
+          console.log('📥 [UserProfileContext] Perfil cargado:', profile.displayName);
         }
 
         setUserProfile(profile);
       } catch (err) {
-        console.error('Error loading user profile:', err);
+        console.error('❌ [UserProfileContext] Error loading user profile:', err);
         setError('Error al cargar el perfil de usuario');
         setUserProfile(null);
       } finally {
@@ -81,10 +104,13 @@ export const useUserProfile = () => {
   }, [user, refreshTrigger]);
 
   const updateProfile = async (updates: Partial<Omit<UserProfile, 'id' | 'uid' | 'createdAt'>>) => {
-    if (!userProfile?.id || !user) return;
+    if (!userProfile?.id || !user) {
+      console.error('❌ [UserProfileContext] No se puede actualizar: no hay perfil o usuario');
+      return;
+    }
 
     try {
-      console.log('🔄 Actualizando perfil con:', updates);
+      console.log('🔄 [UserProfileContext] Actualizando perfil con:', updates);
 
       // Agregar updatedAt al update
       const updatesWithTimestamp = {
@@ -94,35 +120,43 @@ export const useUserProfile = () => {
 
       // Actualizar en Firestore
       await usersService.update(userProfile.id, updatesWithTimestamp);
-      console.log('✅ Perfil actualizado en Firestore');
+      console.log('✅ [UserProfileContext] Perfil actualizado en Firestore');
 
       // Actualizar estado local inmediatamente
-      setUserProfile(prev => {
-        if (!prev) return null;
-        const newProfile = { ...prev, ...updatesWithTimestamp };
-        console.log('✅ Perfil actualizado localmente:', {
-          displayName: newProfile.displayName,
-          avatarType: newProfile.avatarType,
-        });
-        return newProfile;
+      const newProfile = { ...userProfile, ...updatesWithTimestamp };
+      console.log('✅ [UserProfileContext] Actualizando estado local:', {
+        displayName: newProfile.displayName,
+        avatarType: newProfile.avatarType,
       });
+      setUserProfile(newProfile);
 
       // Forzar refresh desde Firestore para asegurar sincronización
-      // Pequeño delay para que Firestore procese el update
       setTimeout(() => {
-        console.log('🔄 Forzando refresh del perfil desde Firestore...');
+        console.log('🔄 [UserProfileContext] Forzando refresh del perfil desde Firestore...');
         setRefreshTrigger(prev => prev + 1);
-      }, 500);
+      }, 300);
     } catch (err) {
-      console.error('❌ Error updating profile:', err);
+      console.error('❌ [UserProfileContext] Error updating profile:', err);
       throw new Error('Error al actualizar el perfil');
     }
   };
 
-  return {
+  const refreshProfile = () => {
+    console.log('🔄 [UserProfileContext] Refresh manual solicitado');
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  const value: UserProfileContextType = {
     userProfile,
     loading,
     error,
     updateProfile,
+    refreshProfile,
   };
+
+  return (
+    <UserProfileContext.Provider value={value}>
+      {children}
+    </UserProfileContext.Provider>
+  );
 };

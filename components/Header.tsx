@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SPACING, ICON_SIZE } from '../constants/design';
+import { scale } from '../utils/scale';
 
 interface HeaderProps {
   onSearchPress: () => void;
@@ -62,7 +63,7 @@ const Header: React.FC<HeaderProps> = ({ onSearchPress }) => {
 
 const styles = StyleSheet.create({
   container: {
-    borderBottomWidth: 0.5,
+    borderBottomWidth: scale(0.5),
   },
   content: {
     flexDirection: 'row',
@@ -72,8 +73,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
   },
   logo: {
-    height: 28,
-    width: 100,
+    height: scale(28),
+    width: scale(100),
   },
   actions: {
     flexDirection: 'row',

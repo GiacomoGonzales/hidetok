@@ -22,7 +22,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useUserProfile } from '../hooks/useUserProfile';
+import { useUserProfile } from '../contexts/UserProfileContext';
 import { uploadProfileImageFromUri } from '../services/storageService';
 import { postsService, Post } from '../services/firestoreService';
 import { formatNumber } from '../data/mockData';

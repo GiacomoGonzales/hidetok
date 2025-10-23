@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useUserProfile } from '../hooks/useUserProfile';
+import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import AvatarPicker from '../components/avatars/AvatarPicker';
 import { uploadProfileImageFromUri } from '../services/storageService';
@@ -34,6 +34,7 @@ const OnboardingScreen: React.FC = () => {
   const [selectedAvatarId, setSelectedAvatarId] = useState('male');
   const [customAvatarUri, setCustomAvatarUri] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [completed, setCompleted] = useState(false);
 
   const maxDisplayNameLength = 30;
   const maxBioLength = 150;
@@ -91,11 +92,17 @@ const OnboardingScreen: React.FC = () => {
         await updateProfile(updateData);
 
         console.log('✅ Onboarding completado! Perfil actualizado:', updateData);
-        // El onboarding se completó, el hook detectará el perfil y mostrará la app automáticamente
+
+        // Marcar como completado
+        setCompleted(true);
+        setUploading(false);
+
+        // Esperar un momento para que el estado se propague
+        // El MainStackNavigator detectará el cambio y mostrará la app automáticamente
+        console.log('⏳ Esperando que MainStackNavigator detecte el cambio...');
       } catch (error) {
         console.error('Error saving profile:', error);
         Alert.alert('Error', 'No se pudo guardar tu perfil. Intenta de nuevo.');
-      } finally {
         setUploading(false);
       }
     }
@@ -290,16 +297,21 @@ const OnboardingScreen: React.FC = () => {
 
               <TouchableOpacity
                 style={[styles.continueButton, {
-                  backgroundColor: theme.colors.accent,
+                  backgroundColor: completed ? theme.colors.success || '#10b981' : theme.colors.accent,
                   flex: step === 1 ? 1 : undefined,
                 }]}
                 onPress={handleContinue}
-                disabled={uploading}
+                disabled={uploading || completed}
               >
                 {uploading ? (
                   <>
                     <ActivityIndicator size="small" color="white" />
                     <Text style={styles.continueButtonText}>Guardando...</Text>
+                  </>
+                ) : completed ? (
+                  <>
+                    <Ionicons name="checkmark-circle" size={18} color="white" />
+                    <Text style={styles.continueButtonText}>¡Completado!</Text>
                   </>
                 ) : (
                   <>
@@ -347,16 +359,21 @@ const OnboardingScreen: React.FC = () => {
 
             <TouchableOpacity
               style={[styles.continueButton, {
-                backgroundColor: theme.colors.accent,
+                backgroundColor: completed ? theme.colors.success || '#10b981' : theme.colors.accent,
                 flex: step === 1 ? 1 : undefined,
               }]}
               onPress={handleContinue}
-              disabled={uploading}
+              disabled={uploading || completed}
             >
               {uploading ? (
                 <>
                   <ActivityIndicator size="small" color="white" />
                   <Text style={styles.continueButtonText}>Guardando...</Text>
+                </>
+              ) : completed ? (
+                <>
+                  <Ionicons name="checkmark-circle" size={20} color="white" />
+                  <Text style={styles.continueButtonText}>¡Completado!</Text>
                 </>
               ) : (
                 <>

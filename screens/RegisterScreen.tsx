@@ -74,9 +74,13 @@ const RegisterScreen: React.FC = () => {
       const { email, password } = formData;
       await signUp(email, password);
       // La navegación se manejará automáticamente por el estado de autenticación
+      // NO poner loading = false aquí, mantener el spinner hasta que la redirección ocurra
     } catch (error: any) {
+      // Solo en caso de error, volver a mostrar el formulario
+      setLoading(false);
+
       let errorMessage = 'Error al crear la cuenta';
-      
+
       switch (error.code) {
         case 'auth/email-already-in-use':
           errorMessage = 'Ya existe una cuenta con este email';
@@ -93,10 +97,8 @@ const RegisterScreen: React.FC = () => {
         default:
           errorMessage = error.message;
       }
-      
+
       Alert.alert('Error de Registro', errorMessage);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -104,10 +106,11 @@ const RegisterScreen: React.FC = () => {
     setLoading(true);
     try {
       await signInWithGoogle();
+      // NO poner loading = false aquí, mantener el spinner hasta que la redirección ocurra
     } catch (error: any) {
-      Alert.alert('Error', 'Error al registrarse con Google: ' + error.message);
-    } finally {
+      // Solo en caso de error, volver a mostrar el formulario
       setLoading(false);
+      Alert.alert('Error', 'Error al registrarse con Google: ' + error.message);
     }
   };
 
@@ -115,10 +118,11 @@ const RegisterScreen: React.FC = () => {
     setLoading(true);
     try {
       await signInAnonymously();
+      // NO poner loading = false aquí, mantener el spinner hasta que la redirección ocurra
     } catch (error: any) {
-      Alert.alert('Error', 'Error al acceder de forma anónima: ' + error.message);
-    } finally {
+      // Solo en caso de error, volver a mostrar el formulario
       setLoading(false);
+      Alert.alert('Error', 'Error al acceder de forma anónima: ' + error.message);
     }
   };
 

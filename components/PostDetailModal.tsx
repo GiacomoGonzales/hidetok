@@ -3,10 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
+  Modal,
   TouchableOpacity,
   Image,
   ScrollView,
   Dimensions,
+  Platform,
   TextInput,
   NativeSyntheticEvent,
   NativeScrollEvent,
@@ -18,23 +20,30 @@ import { useUserProfile } from '../contexts/UserProfileContext';
 import { useUserById } from '../hooks/useUserById';
 import { Post } from '../services/firestoreService';
 import { formatNumber, getRelativeTime } from '../data/mockData';
-import AvatarDisplay from '../components/avatars/AvatarDisplay';
+import AvatarDisplay from './avatars/AvatarDisplay';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, ICON_SIZE } from '../constants/design';
 import { scale } from '../utils/scale';
-import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
-import { MainStackParamList } from '../navigation/MainStackNavigator';
 
-type PostDetailScreenRouteProp = RouteProp<MainStackParamList, 'PostDetail'>;
+interface PostDetailModalProps {
+  visible: boolean;
+  post: Post;
+  onClose: () => void;
+  onLike: (postId: string) => void;
+  onComment: (postId: string) => void;
+}
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-const PostDetailScreen: React.FC = () => {
+const PostDetailModal: React.FC<PostDetailModalProps> = ({
+  visible,
+  post,
+  onClose,
+  onLike,
+  onComment,
+}) => {
   const { theme } = useTheme();
   const { user } = useAuth();
   const { userProfile } = useUserProfile();
-  const route = useRoute<PostDetailScreenRouteProp>();
-  const navigation = useNavigation();
-  const { post } = route.params;
   const { userProfile: postAuthor, loading: loadingAuthor } = useUserById(post.userId);
 
   const [isLiked, setIsLiked] = useState(false);
@@ -49,13 +58,12 @@ const PostDetailScreen: React.FC = () => {
     const newIsLiked = !isLiked;
     setIsLiked(newIsLiked);
     setLikesCount(prev => newIsLiked ? prev + 1 : prev - 1);
+    onLike(post.id!);
   };
-
-  const [carouselWidth, setCarouselWidth] = React.useState(screenWidth);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(offsetX / carouselWidth);
+    const index = Math.round(offsetX / screenWidth);
     setCurrentImageIndex(index);
   };
 
@@ -83,13 +91,7 @@ const PostDetailScreen: React.FC = () => {
 
     // Carrusel para múltiples imágenes
     return (
-      <View
-        style={styles.imageContainer}
-        onLayout={(event) => {
-          const { width } = event.nativeEvent.layout;
-          setCarouselWidth(width);
-        }}
-      >
+      <View style={styles.imageContainer}>
         <ScrollView
           ref={scrollViewRef}
           horizontal
@@ -97,10 +99,9 @@ const PostDetailScreen: React.FC = () => {
           showsHorizontalScrollIndicator={false}
           onScroll={handleScroll}
           scrollEventThrottle={16}
-          style={{ width: '100%' }}
         >
           {post.imageUrls.map((imageUrl, index) => (
-            <View key={index} style={[styles.carouselImageContainer, { width: carouselWidth }]}>
+            <View key={index} style={[styles.carouselImageContainer, { width: isDesktop ? screenWidth * 0.6 : screenWidth }]}>
               <Image
                 source={{ uri: imageUrl }}
                 style={styles.image}
@@ -141,23 +142,6 @@ const PostDetailScreen: React.FC = () => {
     );
   };
 
-  const getPostDate = () => {
-    if (!post.createdAt) return new Date();
-    // Si es un Timestamp de Firebase
-    if (typeof post.createdAt.toDate === 'function') {
-      return post.createdAt.toDate();
-    }
-    // Si ya es un objeto Date
-    if (post.createdAt instanceof Date) {
-      return post.createdAt;
-    }
-    // Si es un objeto con seconds (formato serializado de Timestamp)
-    if (typeof post.createdAt === 'object' && 'seconds' in post.createdAt) {
-      return new Date((post.createdAt as any).seconds * 1000);
-    }
-    return new Date();
-  };
-
   const renderPostInfo = () => (
     <View style={[styles.infoContainer, { backgroundColor: theme.colors.background }]}>
       {/* Header del post */}
@@ -178,11 +162,11 @@ const PostDetailScreen: React.FC = () => {
               {postAuthor?.displayName || 'Usuario Anónimo'}
             </Text>
             <Text style={[styles.timestamp, { color: theme.colors.textSecondary }]}>
-              {getRelativeTime(getPostDate())}
+              {getRelativeTime(post.createdAt.toDate())}
             </Text>
           </View>
         </View>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeButton}>
+        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
           <Ionicons name="close" size={ICON_SIZE.lg} color={theme.colors.text} />
         </TouchableOpacity>
       </View>
@@ -302,44 +286,61 @@ const PostDetailScreen: React.FC = () => {
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: 'rgba(0, 0, 0, 0.85)' }]}>
-      <View style={[styles.content, isDesktop && styles.contentDesktop]}>
-        {isDesktop ? (
-          // Layout Desktop: Imagen a la izquierda, Info a la derecha
-          <>
-            <View style={styles.leftColumn}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+
+        <View style={[styles.modalContent, isDesktop && styles.modalContentDesktop]}>
+          {isDesktop ? (
+            // Layout Desktop: Imagen a la izquierda, Info a la derecha
+            <>
+              <View style={styles.leftColumn}>
+                {renderImages()}
+              </View>
+              <View style={styles.rightColumn}>
+                {renderPostInfo()}
+              </View>
+            </>
+          ) : (
+            // Layout Mobile: Todo vertical
+            <View style={styles.mobileLayout}>
+              <TouchableOpacity onPress={onClose} style={styles.mobileCloseButton}>
+                <Ionicons name="close" size={ICON_SIZE.xl} color="white" />
+              </TouchableOpacity>
               {renderImages()}
-            </View>
-            <View style={styles.rightColumn}>
               {renderPostInfo()}
             </View>
-          </>
-        ) : (
-          // Layout Mobile: Todo vertical
-          <View style={styles.mobileLayout}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.mobileCloseButton}>
-              <Ionicons name="close" size={ICON_SIZE.xl} color="white" />
-            </TouchableOpacity>
-            {renderImages()}
-            {renderPostInfo()}
-          </View>
-        )}
+          )}
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  modalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  content: {
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalContent: {
     width: '100%',
     height: '100%',
   },
-  contentDesktop: {
+  modalContentDesktop: {
     flexDirection: 'row',
     maxWidth: screenWidth * 0.9,
     maxHeight: screenHeight * 0.9,
@@ -384,7 +385,6 @@ const styles = StyleSheet.create({
   carouselImageContainer: {
     justifyContent: 'center',
     alignItems: 'center',
-    height: '100%',
   },
   pageIndicatorContainer: {
     position: 'absolute',
@@ -516,4 +516,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default PostDetailScreen;
+export default PostDetailModal;
