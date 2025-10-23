@@ -1,7 +1,8 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
 console.log('🔥 Starting Firebase initialization...');
@@ -64,20 +65,22 @@ try {
   // Inicializar Firebase
   app = initializeApp(firebaseConfig);
   console.log('✅ Firebase app initialized');
-  
-  // Inicializar servicios de Firebase
-  auth = getAuth(app);
-  console.log('✅ Firebase Auth initialized');
-  
+
+  // Inicializar servicios de Firebase con persistencia AsyncStorage para React Native
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage)
+  });
+  console.log('✅ Firebase Auth initialized with AsyncStorage persistence');
+
   db = getFirestore(app);
   console.log('✅ Firebase Firestore initialized');
-  
+
   storage = getStorage(app);
   console.log('✅ Firebase Storage initialized');
-  
+
 } catch (error) {
   console.error('❌ Error initializing Firebase:', error);
-  
+
   // Crear stubs para evitar crashes
   auth = null;
   db = null;
