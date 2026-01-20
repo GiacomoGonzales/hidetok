@@ -10,16 +10,28 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { useTheme, ThemeMode } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import ResponsiveLayout from '../components/ResponsiveLayout';
+import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
+
+type SettingsNavigationProp = StackNavigationProp<ProfileStackParamList, 'Settings'>;
 
 const SettingsScreen: React.FC = () => {
   const { theme, themeMode, setThemeMode } = useTheme();
+  const { logout } = useAuth();
+  const { userProfile } = useUserProfile();
+  const navigation = useNavigation<SettingsNavigationProp>();
   const insets = useSafeAreaInsets();
   const { isDesktop } = useResponsive();
   const [allowPrivateReplies, setAllowPrivateReplies] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+
+  const joinedCommunitiesCount = userProfile?.joinedCommunities?.length || 0;
 
   const handleThemeChange = (mode: ThemeMode) => {
     setThemeMode(mode);
@@ -46,6 +58,31 @@ const SettingsScreen: React.FC = () => {
       'Soporte',
       '¿Necesitas ayuda?\n\nEsta es una aplicación demo. En una versión real, aquí encontrarías:\n\n• FAQ\n• Contacto\n• Reportar problemas\n• Guías de uso',
       [{ text: 'OK', style: 'default' }]
+    );
+  };
+
+  const handleCommunities = () => {
+    navigation.navigate('CommunitiesManagement');
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Cerrar sesión',
+      '¿Estás seguro de que quieres cerrar sesión?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Cerrar sesión',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+            } catch (error) {
+              Alert.alert('Error', 'No se pudo cerrar la sesión');
+            }
+          },
+        },
+      ]
     );
   };
 
@@ -161,6 +198,22 @@ const SettingsScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* Contenido */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            Contenido
+          </Text>
+
+          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
+            {renderSettingItem(
+              'people',
+              'Mis Comunidades',
+              `${joinedCommunitiesCount} ${joinedCommunitiesCount === 1 ? 'comunidad' : 'comunidades'} unidas`,
+              handleCommunities
+            )}
+          </View>
+        </View>
+
         {/* Privacidad */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
@@ -234,6 +287,38 @@ const SettingsScreen: React.FC = () => {
               'Centro de ayuda y contacto',
               handleSupport
             )}
+          </View>
+        </View>
+
+        {/* Cuenta */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            Cuenta
+          </Text>
+
+          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
+            <TouchableOpacity
+              style={[styles.settingItem, {
+                backgroundColor: 'transparent',
+                borderBottomWidth: 0,
+              }]}
+              onPress={handleLogout}
+              activeOpacity={0.7}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: theme.colors.surface }]}>
+                  <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+                </View>
+                <View style={styles.settingText}>
+                  <Text style={[styles.settingTitle, { color: '#EF4444' }]}>
+                    Cerrar sesión
+                  </Text>
+                  <Text style={[styles.settingSubtitle, { color: theme.colors.textSecondary }]}>
+                    Salir de tu cuenta
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
           </View>
         </View>
 

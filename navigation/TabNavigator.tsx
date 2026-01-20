@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, View, StyleSheet } from 'react-native';
+import { TouchableOpacity, View, StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -23,11 +23,74 @@ const Tab = createBottomTabNavigator();
 
 type TabNavigatorNavigationProp = StackNavigationProp<MainStackParamList>;
 
+// Componentes personalizados para los botones de tab
+const SearchTabButton = (props: any) => {
+  const navigation = useNavigation<TabNavigatorNavigationProp>();
+
+  return (
+    <TouchableOpacity
+      {...props}
+      onPress={() => {
+        console.log('🔍 Search button pressed');
+        try {
+          const parentNav = navigation.getParent();
+          console.log('🔍 Parent navigation:', parentNav ? 'exists' : 'null');
+          if (parentNav) {
+            console.log('🔍 Navigating to Search...');
+            (parentNav as any).navigate('Search');
+          } else {
+            console.log('🔍 Trying direct navigation...');
+            (navigation as any).navigate('Search');
+          }
+        } catch (error) {
+          console.error('🔍 Error navigating to Search:', error);
+        }
+      }}
+    />
+  );
+};
+
+const CreateTabButton = (props: any) => {
+  const navigation = useNavigation<TabNavigatorNavigationProp>();
+
+  return (
+    <TouchableOpacity
+      {...props}
+      onPress={() => {
+        console.log('➕ Create button pressed');
+        try {
+          const parentNav = navigation.getParent();
+          console.log('➕ Parent navigation:', parentNav ? 'exists' : 'null');
+          if (parentNav) {
+            console.log('➕ Navigating to Create...');
+            (parentNav as any).navigate('Create');
+          } else {
+            console.log('➕ Trying direct navigation...');
+            (navigation as any).navigate('Create');
+          }
+        } catch (error) {
+          console.error('➕ Error navigating to Create:', error);
+        }
+      }}
+    />
+  );
+};
+
 const TabNavigator: React.FC = () => {
   const { theme } = useTheme();
   const { isDesktop, isTablet } = useResponsive();
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation<TabNavigatorNavigationProp>();
+
+  // Calcular padding inferior para Android
+  // Si insets.bottom > 0, el sistema ya reporta el safe area (navegación por gestos)
+  // Si insets.bottom === 0, puede ser un dispositivo con botones fijos
+  const androidBottomPadding = insets.bottom > 0
+    ? insets.bottom + 10  // Dispositivo con safe area reportado
+    : 15;                 // Dispositivo con botones fijos (padding moderado)
+
+  const androidHeight = insets.bottom > 0
+    ? 60 + insets.bottom + 10
+    : 75;                 // Altura moderada para botones fijos
 
   return (
     <Tab.Navigator
@@ -74,10 +137,14 @@ const TabNavigator: React.FC = () => {
           backgroundColor: 'transparent',
           borderTopColor: theme.colors.border,
           borderTopWidth: 0.5,
-          height: Math.max(65, 50 + insets.bottom),
-          paddingBottom: Math.max(20, insets.bottom + 13),
-          paddingTop: 6,
-          marginBottom: 10,
+          height: Platform.OS === 'android'
+            ? androidHeight
+            : Math.max(90, 60 + insets.bottom),
+          paddingBottom: Platform.OS === 'android'
+            ? androidBottomPadding
+            : Math.max(20, insets.bottom),
+          paddingTop: 10,
+          marginBottom: 0,
           elevation: 8,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -2 },
@@ -106,25 +173,7 @@ const TabNavigator: React.FC = () => {
         component={SearchTabPlaceholder}
         options={{
           tabBarLabel: 'Buscar',
-          tabBarButton: (props) => {
-            return (
-              <TouchableOpacity
-                {...props}
-                onPress={(e) => {
-                  // Prevenir navegación al tab
-                  e?.preventDefault();
-                  // Abrir el modal de búsqueda
-                  navigation.navigate('Search');
-                }}
-              />
-            );
-          }
-        }}
-        listeners={{
-          tabPress: (e) => {
-            // Prevenir que el tab se active
-            e.preventDefault();
-          },
+          tabBarButton: (props) => <SearchTabButton {...props} />
         }}
       />
       <Tab.Screen
@@ -132,25 +181,7 @@ const TabNavigator: React.FC = () => {
         component={CreateTabPlaceholder}
         options={{
           tabBarLabel: 'Crear',
-          tabBarButton: (props) => {
-            return (
-              <TouchableOpacity
-                {...props}
-                onPress={(e) => {
-                  // Prevenir navegación al tab
-                  e?.preventDefault();
-                  // Abrir el modal de crear
-                  navigation.navigate('Create');
-                }}
-              />
-            );
-          }
-        }}
-        listeners={{
-          tabPress: (e) => {
-            // Prevenir que el tab se active
-            e.preventDefault();
-          },
+          tabBarButton: (props) => <CreateTabButton {...props} />
         }}
       />
       <Tab.Screen 

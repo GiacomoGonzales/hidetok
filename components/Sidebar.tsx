@@ -174,7 +174,8 @@ const Sidebar: React.FC = () => {
               size={40}
               avatarType={userProfile.avatarType || 'predefined'}
               avatarId={userProfile.avatarId || 'male'}
-              photoURL={userProfile.photoURL}
+              photoURL={typeof userProfile.photoURL === 'string' ? userProfile.photoURL : undefined}
+              photoURLThumbnail={typeof userProfile.photoURLThumbnail === 'string' ? userProfile.photoURLThumbnail : undefined}
               backgroundColor={theme.colors.accent}
               showBorder={false}
             />

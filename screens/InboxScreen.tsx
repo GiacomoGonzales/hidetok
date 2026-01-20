@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -29,10 +30,17 @@ const InboxScreen: React.FC = () => {
   const { isDesktop } = useResponsive();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Función de navegación para el header
   const handleNotificationsPress = () => {
-    (navigation as any).navigate('Notifications');
+    const parentNav = navigation.getParent()?.getParent();
+    if (parentNav) {
+      (parentNav as any).navigate('Home', {
+        screen: 'HomeFeed',
+        params: { screen: 'Notifications' }
+      });
+    }
   };
 
   // Cargar conversaciones y suscribirse a cambios en tiempo real
@@ -131,7 +139,8 @@ const InboxScreen: React.FC = () => {
           size={48}
           avatarType={otherUserData.avatarType || 'predefined'}
           avatarId={otherUserData.avatarId || 'male'}
-          photoURL={otherUserData.photoURL}
+          photoURL={typeof otherUserData.photoURL === 'string' ? otherUserData.photoURL : undefined}
+          photoURLThumbnail={typeof otherUserData.photoURLThumbnail === 'string' ? otherUserData.photoURLThumbnail : undefined}
           backgroundColor={theme.colors.accent}
           showBorder={false}
         />
@@ -216,19 +225,42 @@ const InboxScreen: React.FC = () => {
   );
 
   const renderHeader = () => (
-    <View style={[styles.header, {
+    <View style={[styles.searchContainer, {
       backgroundColor: theme.colors.background,
-      borderBottomColor: theme.colors.border,
     }]}>
-      <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-        Mensajes
-      </Text>
-      <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>
-        {conversations.length > 0
-          ? `${conversations.length} conversación${conversations.length > 1 ? 'es' : ''}`
-          : 'Conversaciones privadas'
-        }
-      </Text>
+      <View style={[styles.searchBar, {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.border,
+      }]}>
+        <Ionicons
+          name="search"
+          size={18}
+          color={theme.colors.textSecondary}
+          style={styles.searchIcon}
+        />
+        <TextInput
+          style={[styles.searchInput, { color: theme.colors.text }]}
+          placeholder="Buscar en mensajes"
+          placeholderTextColor={theme.colors.textSecondary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity
+            onPress={() => setSearchQuery('')}
+            style={styles.clearButton}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="close-circle"
+              size={18}
+              color={theme.colors.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 
@@ -240,24 +272,42 @@ const InboxScreen: React.FC = () => {
     );
   }
 
+  // Filtrar conversaciones por búsqueda
+  const getFilteredConversations = () => {
+    if (!searchQuery.trim()) return conversations;
+
+    return conversations.filter(conversation => {
+      const otherUserId = conversation.participants.find(id => id !== user?.uid);
+      if (!otherUserId) return false;
+
+      const otherUserData = conversation.participantsData[otherUserId];
+      const displayName = otherUserData?.displayName?.toLowerCase() || '';
+      const lastMessageContent = conversation.lastMessage?.content?.toLowerCase() || '';
+      const query = searchQuery.toLowerCase();
+
+      return displayName.includes(query) || lastMessageContent.includes(query);
+    });
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header principal - solo en móvil */}
       {!isDesktop && (
         <Header
           onNotificationsPress={handleNotificationsPress}
+          showMessagesIcon={true}
         />
       )}
 
       {renderHeader()}
 
       <FlatList
-        data={conversations}
+        data={getFilteredConversations()}
         renderItem={renderConversation}
         keyExtractor={item => item.id || ''}
         contentContainerStyle={[
           styles.conversationsList,
-          conversations.length === 0 && styles.emptyList
+          getFilteredConversations().length === 0 && styles.emptyList
         ]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={renderEmptyState}
@@ -274,21 +324,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  header: {
+  searchContainer: {
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.lg,
-    borderBottomWidth: 0.5,
+    paddingVertical: SPACING.md,
+  },
+  searchBar: {
+    flexDirection: 'row',
     alignItems: 'center',
+    borderRadius: BORDER_RADIUS.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderWidth: 1,
   },
-  headerTitle: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: FONT_WEIGHT.bold,
-    marginBottom: 4,
-    letterSpacing: -0.3,
+  searchIcon: {
+    marginRight: SPACING.sm,
   },
-  headerSubtitle: {
-    fontSize: FONT_SIZE.sm,
+  searchInput: {
+    flex: 1,
+    fontSize: FONT_SIZE.base,
     fontWeight: FONT_WEIGHT.regular,
+    paddingVertical: SPACING.xs,
+  },
+  clearButton: {
+    padding: SPACING.xs,
+    marginLeft: SPACING.xs,
   },
   conversationsList: {
     paddingVertical: SPACING.sm,

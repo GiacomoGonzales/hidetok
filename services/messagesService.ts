@@ -36,6 +36,7 @@ export interface ParticipantData {
   avatarType?: 'predefined' | 'custom';
   avatarId?: string;
   photoURL?: string;
+  photoURLThumbnail?: string;
   lastSeen?: Timestamp;
 }
 
@@ -226,15 +227,21 @@ class MessagesService {
   async markAsRead(conversationId: string, userId: string): Promise<void> {
     try {
       const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+      // Consulta simplificada para evitar índice compuesto
+      // Filtramos por senderId en el cliente
       const q = query(
         messagesRef,
-        where('senderId', '!=', userId),
         where('read', '==', false)
       );
 
       const querySnapshot = await getDocs(q);
 
-      const updatePromises = querySnapshot.docs.map((document) =>
+      // Filtrar mensajes que no son del usuario actual (client-side)
+      const messagesToUpdate = querySnapshot.docs.filter(
+        (document) => document.data().senderId !== userId
+      );
+
+      const updatePromises = messagesToUpdate.map((document) =>
         updateDoc(doc(db, 'conversations', conversationId, 'messages', document.id), {
           read: true,
         })
@@ -295,8 +302,9 @@ class MessagesService {
       const conversationsRef = collection(db, 'conversations');
       const q = query(
         conversationsRef,
-        where('participants', 'array-contains', userId),
-        orderBy('updatedAt', 'desc')
+        where('participants', 'array-contains', userId)
+        // Ordenar en el cliente temporalmente hasta que se cree el índice en Firebase
+        // Para crear el índice, ve a: Firebase Console > Firestore > Indexes
       );
 
       return onSnapshot(q, (querySnapshot) => {
@@ -304,6 +312,14 @@ class MessagesService {
         querySnapshot.forEach((doc) => {
           conversations.push({ id: doc.id, ...doc.data() } as Conversation);
         });
+
+        // Ordenar por updatedAt en el cliente
+        conversations.sort((a, b) => {
+          const timeA = a.updatedAt?.toMillis() || 0;
+          const timeB = b.updatedAt?.toMillis() || 0;
+          return timeB - timeA; // desc
+        });
+
         callback(conversations);
       });
     } catch (error) {

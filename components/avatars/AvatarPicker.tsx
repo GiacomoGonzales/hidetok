@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useResponsive } from '../../hooks/useResponsive';
 import { predefinedAvatars } from './AvatarSVGs';
@@ -43,6 +44,40 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
   const { isDesktop } = useResponsive();
   const [showPicker, setShowPicker] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  // Recortar imagen a cuadrado en Android (donde el crop nativo no funciona bien)
+  const cropToSquare = async (uri: string): Promise<string> => {
+    if (Platform.OS !== 'android') {
+      return uri; // En iOS ya está recortado por allowsEditing
+    }
+
+    try {
+      // Obtener dimensiones de la imagen
+      const { width, height } = await new Promise<{ width: number; height: number }>((resolve) => {
+        Image.getSize(uri, (w, h) => resolve({ width: w, height: h }));
+      });
+
+      // Calcular recorte cuadrado desde el centro
+      const size = Math.min(width, height);
+      const originX = (width - size) / 2;
+      const originY = (height - size) / 2;
+
+      // Recortar y redimensionar
+      const manipResult = await ImageManipulator.manipulateAsync(
+        uri,
+        [
+          { crop: { originX, originY, width: size, height: size } },
+          { resize: { width: 800 } }, // Tamaño final
+        ],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+      );
+
+      return manipResult.uri;
+    } catch (error) {
+      console.error('Error cropping image:', error);
+      return uri; // Si falla, usar imagen original
+    }
+  };
 
   const handlePredefinedAvatarSelect = (avatarId: string) => {
     onAvatarSelect({
@@ -93,17 +128,25 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        allowsEditing: Platform.OS === 'ios', // Solo en iOS funciona bien el editor
         aspect: [1, 1],
         quality: 0.8,
         base64: false,
+        ...(Platform.OS === 'android' && {
+          // En Android, usar selección simple sin crop nativo
+          selectionLimit: 1,
+        }),
       });
 
       if (!result.canceled && result.assets[0]) {
         setUploading(true);
+
+        // Recortar a cuadrado en Android
+        const finalUri = await cropToSquare(result.assets[0].uri);
+
         onAvatarSelect({
           type: 'custom',
-          uri: result.assets[0].uri,
+          uri: finalUri,
         });
         setUploading(false);
         setShowPicker(false);
@@ -127,7 +170,7 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
+        allowsEditing: Platform.OS === 'ios', // Solo en iOS funciona bien el editor
         aspect: [1, 1],
         quality: 0.8,
         base64: false,
@@ -135,9 +178,13 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
 
       if (!result.canceled && result.assets[0]) {
         setUploading(true);
+
+        // Recortar a cuadrado en Android
+        const finalUri = await cropToSquare(result.assets[0].uri);
+
         onAvatarSelect({
           type: 'custom',
-          uri: result.assets[0].uri,
+          uri: finalUri,
         });
         setUploading(false);
         setShowPicker(false);
@@ -149,7 +196,7 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
   };
 
   const renderCurrentAvatar = () => {
-    if (currentAvatarType === 'custom' && currentAvatar) {
+    if (currentAvatarType === 'custom' && currentAvatar && typeof currentAvatar === 'string') {
       return (
         <Image
           source={{ uri: currentAvatar }}

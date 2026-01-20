@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,19 @@ import {
   Platform,
   ActivityIndicator,
   Dimensions,
+  KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import AvatarPicker from '../components/avatars/AvatarPicker';
+import CommunitySelector from '../components/CommunitySelector';
 import { uploadProfileImageFromUri } from '../services/storageService';
+import { scale } from '../utils/scale';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -26,6 +31,7 @@ const OnboardingScreen: React.FC = () => {
   const { user } = useAuth();
   const { updateProfile } = useUserProfile();
   const { isDesktop } = useResponsive();
+  const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState(1);
   const [displayName, setDisplayName] = useState('');
@@ -33,8 +39,28 @@ const OnboardingScreen: React.FC = () => {
   const [selectedAvatarType, setSelectedAvatarType] = useState<'predefined' | 'custom'>('predefined');
   const [selectedAvatarId, setSelectedAvatarId] = useState('male');
   const [customAvatarUri, setCustomAvatarUri] = useState<string | null>(null);
+  const [selectedCommunities, setSelectedCommunities] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [completed, setCompleted] = useState(false);
+
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  // Listener para detectar cuando el teclado se cierra y volver al inicio
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        // Cuando el teclado se cierra, hacer scroll hacia arriba
+        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      }
+    );
+
+    return () => {
+      keyboardDidHideListener.remove();
+    };
+  }, []);
 
   const maxDisplayNameLength = 30;
   const maxBioLength = 150;
@@ -67,7 +93,16 @@ const OnboardingScreen: React.FC = () => {
       }
       setStep(2);
     } else if (step === 2) {
-      // Guardar perfil
+      // Ir al paso 3 (selección de comunidades)
+      setStep(3);
+    } else if (step === 3) {
+      // Validar comunidades
+      if (selectedCommunities.length < 1) {
+        Alert.alert('Comunidades requeridas', 'Por favor selecciona al menos una comunidad');
+        return;
+      }
+
+      // Guardar perfil completo
       if (!user) return;
 
       setUploading(true);
@@ -76,6 +111,9 @@ const OnboardingScreen: React.FC = () => {
           displayName: displayName.trim(),
           bio: bio.trim(),
           avatarType: selectedAvatarType,
+          joinedCommunities: selectedCommunities,
+          primaryCommunity: selectedCommunities[0],
+          hasCompletedCommunityOnboarding: true,
         };
 
         // Si es avatar personalizado, subir imagen
@@ -129,9 +167,17 @@ const OnboardingScreen: React.FC = () => {
           styles.stepDot,
           { backgroundColor: step >= 2 ? theme.colors.accent : theme.colors.border }
         ]} />
+        <View style={[
+          styles.stepLine,
+          { backgroundColor: step >= 3 ? theme.colors.accent : theme.colors.border }
+        ]} />
+        <View style={[
+          styles.stepDot,
+          { backgroundColor: step >= 3 ? theme.colors.accent : theme.colors.border }
+        ]} />
       </View>
       <Text style={[styles.stepText, { color: theme.colors.textSecondary }]}>
-        Paso {step} de 2
+        Paso {step} de 3
       </Text>
     </View>
   );
@@ -198,12 +244,20 @@ const OnboardingScreen: React.FC = () => {
           value={displayName}
           onChangeText={setDisplayName}
           maxLength={maxDisplayNameLength}
-          autoFocus
+          onFocus={() => {
+            // Scroll hacia abajo cuando el input recibe focus
+            setTimeout(() => {
+              scrollViewRef.current?.scrollToEnd({ animated: true });
+            }, 100);
+          }}
         />
         <Text style={[styles.charCounter, { color: theme.colors.textSecondary }]}>
           {displayName.length}/{maxDisplayNameLength}
         </Text>
       </View>
+
+      {/* Espacio extra cuando el teclado está abierto */}
+      <View style={{ height: scale(100) }} />
     </View>
   );
 
@@ -257,16 +311,79 @@ const OnboardingScreen: React.FC = () => {
           multiline
           numberOfLines={4}
           textAlignVertical="top"
+          scrollEnabled={false}
+          onFocus={() => {
+            // Scroll hacia abajo cuando el input recibe focus
+            setTimeout(() => {
+              scrollViewRef.current?.scrollToEnd({ animated: true });
+            }, 100);
+          }}
         />
         <Text style={[styles.charCounter, { color: theme.colors.textSecondary }]}>
           {bio.length}/{maxBioLength}
         </Text>
       </View>
+
+      {/* Espacio extra cuando el teclado está abierto */}
+      <View style={{ height: scale(100) }} />
     </View>
   );
 
+  const renderStep3 = () => (
+    <View style={styles.stepContent}>
+      {/* Header */}
+      <View style={styles.step3Header}>
+        <View style={[styles.iconContainer, { backgroundColor: `${theme.colors.accent}20` }]}>
+          <Ionicons name="people" size={40} color={theme.colors.accent} />
+        </View>
+        <Text style={[styles.title, { color: theme.colors.text }]}>
+          Elige tus comunidades
+        </Text>
+        <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
+          Selecciona las comunidades que te interesan. Podrás ver contenido y publicar en ellas.
+        </Text>
+      </View>
+
+      {/* Community Selector */}
+      <CommunitySelector
+        selectedCommunities={selectedCommunities}
+        onSelectionChange={setSelectedCommunities}
+        minSelection={1}
+        maxSelection={10}
+        showWarnings={true}
+      />
+    </View>
+  );
+
+  const renderCurrentStep = () => {
+    switch (step) {
+      case 1:
+        return renderStep1();
+      case 2:
+        return renderStep2();
+      case 3:
+        return renderStep3();
+      default:
+        return renderStep1();
+    }
+  };
+
+  const getButtonText = () => {
+    if (step === 3) return 'Completar';
+    return 'Continuar';
+  };
+
+  const getButtonIcon = () => {
+    if (step === 3) return 'checkmark';
+    return 'arrow-forward';
+  };
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+    >
       {isDesktop ? (
         // Desktop Layout - Floating Content
         <View style={styles.desktopWrapper}>
@@ -278,7 +395,7 @@ const OnboardingScreen: React.FC = () => {
             {renderStepIndicator()}
 
             {/* Content */}
-            {step === 1 ? renderStep1() : renderStep2()}
+            {renderCurrentStep()}
 
             {/* Footer Buttons - Inside scroll for desktop */}
             <View style={styles.desktopFooter}>
@@ -298,7 +415,6 @@ const OnboardingScreen: React.FC = () => {
               <TouchableOpacity
                 style={[styles.continueButton, {
                   backgroundColor: completed ? theme.colors.success || '#10b981' : theme.colors.accent,
-                  flex: step === 1 ? 1 : undefined,
                 }]}
                 onPress={handleContinue}
                 disabled={uploading || completed}
@@ -316,9 +432,9 @@ const OnboardingScreen: React.FC = () => {
                 ) : (
                   <>
                     <Text style={styles.continueButtonText}>
-                      {step === 1 ? 'Continuar' : 'Completar'}
+                      {getButtonText()}
                     </Text>
-                    <Ionicons name={step === 1 ? "arrow-forward" : "checkmark"} size={18} color="white" />
+                    <Ionicons name={getButtonIcon()} size={18} color="white" />
                   </>
                 )}
               </TouchableOpacity>
@@ -329,20 +445,28 @@ const OnboardingScreen: React.FC = () => {
         // Mobile Layout - Full Screen
         <>
           <ScrollView
-            contentContainerStyle={styles.scrollContent}
+            ref={scrollViewRef}
+            contentContainerStyle={[styles.scrollContent, {
+              paddingTop: insets.top + scale(16),
+            }]}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
             {/* Step Indicator */}
             {renderStepIndicator()}
 
             {/* Content */}
-            {step === 1 ? renderStep1() : renderStep2()}
+            {renderCurrentStep()}
           </ScrollView>
 
           {/* Footer Buttons */}
           <View style={[styles.footer, {
             backgroundColor: theme.colors.background,
             borderTopColor: theme.colors.border,
+            paddingBottom: Platform.OS === 'android'
+              ? scale(24)
+              : (insets.bottom || scale(16)),
           }]}>
             {step > 1 && (
               <TouchableOpacity
@@ -350,7 +474,7 @@ const OnboardingScreen: React.FC = () => {
                 onPress={handleBack}
                 disabled={uploading}
               >
-                <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
+                <Ionicons name="arrow-back" size={scale(20)} color={theme.colors.text} />
                 <Text style={[styles.backButtonText, { color: theme.colors.text }]}>
                   Atrás
                 </Text>
@@ -360,7 +484,6 @@ const OnboardingScreen: React.FC = () => {
             <TouchableOpacity
               style={[styles.continueButton, {
                 backgroundColor: completed ? theme.colors.success || '#10b981' : theme.colors.accent,
-                flex: step === 1 ? 1 : undefined,
               }]}
               onPress={handleContinue}
               disabled={uploading || completed}
@@ -372,22 +495,22 @@ const OnboardingScreen: React.FC = () => {
                 </>
               ) : completed ? (
                 <>
-                  <Ionicons name="checkmark-circle" size={20} color="white" />
+                  <Ionicons name="checkmark-circle" size={scale(20)} color="white" />
                   <Text style={styles.continueButtonText}>¡Completado!</Text>
                 </>
               ) : (
                 <>
                   <Text style={styles.continueButtonText}>
-                    {step === 1 ? 'Continuar' : 'Completar'}
+                    {getButtonText()}
                   </Text>
-                  <Ionicons name={step === 1 ? "arrow-forward" : "checkmark"} size={20} color="white" />
+                  <Ionicons name={getButtonIcon()} size={scale(20)} color="white" />
                 </>
               )}
             </TouchableOpacity>
           </View>
         </>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -400,151 +523,158 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
+    paddingVertical: scale(20),
+    paddingHorizontal: scale(20),
   },
   desktopScrollContent: {
     flexGrow: 1,
-    maxWidth: 480,
+    maxWidth: scale(480),
     width: '100%',
-    paddingBottom: 20,
+    paddingBottom: scale(20),
   },
   desktopFooter: {
     flexDirection: 'row',
     paddingHorizontal: 0,
-    paddingTop: 24,
-    gap: 12,
+    paddingTop: scale(24),
+    gap: scale(12),
   },
   // Mobile Styles
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 100,
+    paddingBottom: Platform.OS === 'android' ? scale(200) : scale(120),
+    maxWidth: 500,
+    width: '100%',
+    alignSelf: 'center',
   },
   stepIndicatorContainer: {
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingVertical: scale(16),
+    paddingHorizontal: 0,
   },
   stepIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: scale(6),
   },
   stepDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: scale(10),
+    height: scale(10),
+    borderRadius: scale(5),
   },
   stepLine: {
-    width: 50,
-    height: 2,
-    marginHorizontal: 6,
+    width: scale(50),
+    height: scale(2),
+    marginHorizontal: scale(6),
   },
   stepText: {
-    fontSize: 11,
+    fontSize: scale(11),
     fontWeight: '500',
   },
   stepContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: scale(20),
   },
   heroSection: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: scale(24),
   },
   iconContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: scale(72),
+    height: scale(72),
+    borderRadius: scale(36),
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: scale(16),
   },
   title: {
-    fontSize: 24,
+    fontSize: scale(24),
     fontWeight: 'bold',
-    marginBottom: 6,
+    marginBottom: scale(6),
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: scale(14),
+    lineHeight: scale(20),
     textAlign: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: scale(12),
   },
   featuresContainer: {
-    marginBottom: 24,
-    gap: 12,
+    marginBottom: scale(24),
+    gap: scale(12),
   },
   feature: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: scale(10),
   },
   featureIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
     alignItems: 'center',
     justifyContent: 'center',
   },
   featureText: {
-    fontSize: 14,
+    fontSize: scale(14),
     flex: 1,
   },
   inputSection: {
-    marginBottom: 20,
+    marginBottom: scale(20),
   },
   inputLabel: {
-    fontSize: 16,
+    fontSize: scale(16),
     fontWeight: '600',
-    marginBottom: 6,
+    marginBottom: scale(6),
   },
   inputHint: {
-    fontSize: 13,
-    marginBottom: 10,
-    lineHeight: 18,
+    fontSize: scale(13),
+    marginBottom: scale(10),
+    lineHeight: scale(18),
   },
   input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 15,
+    borderWidth: scale(1),
+    borderRadius: scale(12),
+    padding: scale(14),
+    fontSize: scale(15),
   },
   charCounter: {
-    fontSize: 12,
+    fontSize: scale(12),
     textAlign: 'right',
-    marginTop: 4,
+    marginTop: scale(4),
   },
   step2Header: {
-    marginBottom: 24,
+    marginBottom: scale(24),
+    alignItems: 'center',
+  },
+  step3Header: {
+    marginBottom: scale(20),
     alignItems: 'center',
   },
   avatarSection: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: scale(24),
   },
   sectionLabel: {
-    fontSize: 15,
+    fontSize: scale(15),
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: scale(12),
   },
   avatarPickerContainer: {
-    marginBottom: 10,
+    marginBottom: scale(10),
   },
   avatarHint: {
-    fontSize: 12,
+    fontSize: scale(12),
     textAlign: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: scale(24),
   },
   bioSection: {
-    marginBottom: 20,
+    marginBottom: scale(20),
   },
   bioInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 14,
-    minHeight: 90,
+    borderWidth: scale(1),
+    borderRadius: scale(12),
+    padding: scale(14),
+    fontSize: scale(14),
+    minHeight: scale(90),
   },
   footer: {
     position: 'absolute',
@@ -552,23 +682,26 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     flexDirection: 'row',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    gap: 12,
-    borderTopWidth: 1,
+    paddingHorizontal: scale(20),
+    paddingTop: scale(16),
+    gap: scale(12),
+    borderTopWidth: scale(1),
+    maxWidth: 500,
+    alignSelf: 'center',
+    width: '100%',
   },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 10,
-    borderWidth: 1,
-    gap: 6,
+    paddingVertical: scale(14),
+    paddingHorizontal: scale(18),
+    borderRadius: scale(12),
+    borderWidth: scale(1),
+    gap: scale(6),
   },
   backButtonText: {
-    fontSize: 15,
+    fontSize: scale(15),
     fontWeight: '600',
   },
   continueButton: {
@@ -576,14 +709,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    gap: 6,
+    paddingVertical: scale(14),
+    paddingHorizontal: scale(20),
+    borderRadius: scale(12),
+    gap: scale(6),
   },
   continueButtonText: {
     color: 'white',
-    fontSize: 15,
+    fontSize: scale(15),
     fontWeight: '600',
   },
 });

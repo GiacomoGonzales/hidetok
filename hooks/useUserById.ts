@@ -1,13 +1,73 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { usersService, UserProfile } from '../services/firestoreService';
 
 // Cache simple para evitar consultas duplicadas
 const userCache = new Map<string, UserProfile>();
 
+// Función para invalidar el cache de un usuario específico
+export const invalidateUserCache = (userId: string) => {
+  userCache.delete(userId);
+  console.log('🗑️ Cache invalidado para usuario:', userId.substring(0, 8));
+};
+
+// Listeners para notificar cambios en el cache
+const cacheUpdateListeners = new Map<string, ((user: UserProfile) => void)[]>();
+
+// Función para actualizar el cache de un usuario
+export const updateUserCache = (userId: string, updates: Partial<UserProfile>) => {
+  const cachedUser = userCache.get(userId);
+  if (cachedUser) {
+    const updatedUser = { ...cachedUser, ...updates };
+    userCache.set(userId, updatedUser);
+    console.log('🔄 Cache actualizado para usuario:', userId.substring(0, 8), updates);
+
+    // Notificar a los listeners
+    const listeners = cacheUpdateListeners.get(userId);
+    if (listeners) {
+      listeners.forEach(listener => listener(updatedUser));
+    }
+  }
+};
+
 export const useUserById = (userId: string | undefined) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Función para forzar recarga
+  const refresh = useCallback(() => {
+    if (userId) {
+      invalidateUserCache(userId);
+      setRefreshKey(prev => prev + 1);
+    }
+  }, [userId]);
+
+  // Suscribirse a cambios en el cache
+  useEffect(() => {
+    if (!userId) return;
+
+    const listener = (updatedUser: UserProfile) => {
+      setUserProfile(updatedUser);
+    };
+
+    // Registrar listener
+    if (!cacheUpdateListeners.has(userId)) {
+      cacheUpdateListeners.set(userId, []);
+    }
+    cacheUpdateListeners.get(userId)!.push(listener);
+
+    // Cleanup: remover listener
+    return () => {
+      const listeners = cacheUpdateListeners.get(userId);
+      if (listeners) {
+        const index = listeners.indexOf(listener);
+        if (index > -1) {
+          listeners.splice(index, 1);
+        }
+      }
+    };
+  }, [userId]);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -29,11 +89,11 @@ export const useUserById = (userId: string | undefined) => {
       try {
         setLoading(true);
         setError(null);
-        
+
         console.log('🔍 Cargando usuario desde Firestore:', userId.substring(0, 8));
         // Buscar usuario por UID
         const user = await usersService.getByUid(userId);
-        
+
         if (user) {
           // Guardar en cache
           userCache.set(userId, user);
@@ -41,7 +101,7 @@ export const useUserById = (userId: string | undefined) => {
         } else {
           console.log('❌ Usuario no encontrado:', userId.substring(0, 8));
         }
-        
+
         setUserProfile(user);
       } catch (err) {
         console.error('Error loading user by ID:', err);
@@ -53,7 +113,7 @@ export const useUserById = (userId: string | undefined) => {
     };
 
     loadUser();
-  }, [userId]);
+  }, [userId, refreshKey]);
 
-  return { userProfile, loading, error };
+  return { userProfile, loading, error, refresh };
 };

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,48 +10,163 @@ import {
   TextInput,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  Keyboard,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { useUserById } from '../hooks/useUserById';
-import { Post } from '../services/firestoreService';
+import { useLikes } from '../hooks/useLikes';
+import { Post, Comment, commentsService, postsService, PollOption } from '../services/firestoreService';
+import { notificationService } from '../services/notificationService';
 import { formatNumber, getRelativeTime } from '../data/mockData';
+import { Timestamp } from 'firebase/firestore';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
+import ImageViewer from '../components/ImageViewer';
+import CommentCard from '../components/CommentCard';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, ICON_SIZE } from '../constants/design';
 import { scale } from '../utils/scale';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { MainStackParamList } from '../navigation/MainStackNavigator';
+
+type PostDetailScreenNavigationProp = StackNavigationProp<MainStackParamList, 'PostDetail'>;
 
 type PostDetailScreenRouteProp = RouteProp<MainStackParamList, 'PostDetail'>;
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const { width: screenWidth } = Dimensions.get('window');
+const CARD_MAX_WIDTH = 700;
+const MIN_IMAGE_HEIGHT = scale(200);
+const MAX_IMAGE_HEIGHT = scale(500);
+
+const getCarouselWidth = () => {
+  const availableWidth = Math.min(screenWidth, scale(CARD_MAX_WIDTH));
+  return availableWidth;
+};
+
+interface ImageDimensions {
+  width: number;
+  height: number;
+  aspectRatio: number;
+}
 
 const PostDetailScreen: React.FC = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
   const { userProfile } = useUserProfile();
   const route = useRoute<PostDetailScreenRouteProp>();
-  const navigation = useNavigation();
+  const navigation = useNavigation<PostDetailScreenNavigationProp>();
+  const insets = useSafeAreaInsets();
   const { post } = route.params;
   const { userProfile: postAuthor, loading: loadingAuthor } = useUserById(post.userId);
 
-  const [isLiked, setIsLiked] = useState(false);
-  const [likesCount, setLikesCount] = useState(post.likes);
+  // Hook de likes con estado optimista y notificaciones
+  const { isLiked, likesCount, toggleLike } = useLikes(
+    post.id!,
+    post.likes,
+    {
+      postOwnerId: post.userId,
+      postContent: post.content,
+    }
+  );
+
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [commentText, setCommentText] = useState('');
+  const [imageViewerVisible, setImageViewerVisible] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [imageDimensions, setImageDimensions] = useState<ImageDimensions | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [loadingComments, setLoadingComments] = useState(true);
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [userVote, setUserVote] = useState<number | null>(null);
+  const [localPoll, setLocalPoll] = useState(post.poll);
   const scrollViewRef = useRef<ScrollView>(null);
+  const carouselWidth = getCarouselWidth();
 
-  const isDesktop = screenWidth > 768;
+  // Cargar dimensiones de la primera imagen
+  useEffect(() => {
+    if (post.imageUrls && post.imageUrls.length > 0) {
+      Image.getSize(
+        post.imageUrls[0],
+        (width, height) => {
+          const aspectRatio = width / height;
+          setImageDimensions({ width, height, aspectRatio });
+        },
+        (error) => {
+          console.error('Error loading image dimensions:', error);
+          // Usar dimensiones por defecto si falla
+          setImageDimensions({ width: 1, height: 1, aspectRatio: 1 });
+        }
+      );
+    }
+  }, [post.imageUrls]);
 
-  const handleLike = () => {
-    const newIsLiked = !isLiked;
-    setIsLiked(newIsLiked);
-    setLikesCount(prev => newIsLiked ? prev + 1 : prev - 1);
+  // Cargar comentarios en tiempo real
+  useEffect(() => {
+    if (!post.id) {
+      setLoadingComments(false);
+      return;
+    }
+
+    setLoadingComments(true);
+    console.log('📝 Suscribiéndose a comentarios del post:', post.id);
+
+    const unsubscribe = commentsService.subscribeToPost(post.id, (updatedComments) => {
+      console.log('✅ Comentarios recibidos:', updatedComments.length);
+      setComments(updatedComments);
+      setLoadingComments(false);
+    });
+
+    return () => {
+      console.log('🔌 Desuscribiéndose de comentarios');
+      unsubscribe();
+    };
+  }, [post.id]);
+
+  // Sincronizar poll local con el post
+  useEffect(() => {
+    setLocalPoll(post.poll);
+  }, [post.poll]);
+
+  // Verificar si el usuario ya votó en la encuesta
+  useEffect(() => {
+    if (post.poll && user?.uid) {
+      const voteIndex = post.poll.options.findIndex(opt =>
+        opt.votedBy.includes(user.uid)
+      );
+      if (voteIndex !== -1) {
+        setUserVote(voteIndex);
+      }
+    }
+  }, [post.poll, user?.uid]);
+
+  const getImageHeight = () => {
+    if (!imageDimensions) {
+      return scale(300); // Altura por defecto mientras carga
+    }
+
+    // Calcular altura basada en el aspect ratio
+    const calculatedHeight = carouselWidth / imageDimensions.aspectRatio;
+
+    // Limitar entre MIN y MAX
+    return Math.max(MIN_IMAGE_HEIGHT, Math.min(MAX_IMAGE_HEIGHT, calculatedHeight));
   };
 
-  const [carouselWidth, setCarouselWidth] = React.useState(screenWidth);
+  const handleLike = async () => {
+    await toggleLike();
+  };
+
+  const handleProfilePress = () => {
+    if (post.userId) {
+      navigation.navigate('UserProfile', { userId: post.userId });
+    }
+  };
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = event.nativeEvent.contentOffset.x;
@@ -59,37 +174,163 @@ const PostDetailScreen: React.FC = () => {
     setCurrentImageIndex(index);
   };
 
-  const handleCommentSubmit = () => {
-    if (commentText.trim()) {
-      // TODO: Implementar envío de comentario
+  const handleImagePress = (index: number) => {
+    setSelectedImageIndex(index);
+    setImageViewerVisible(true);
+  };
+
+  const handleCommentProfilePress = (userId: string) => {
+    navigation.navigate('UserProfile', { userId });
+  };
+
+  const handleCommentLike = async (commentId: string) => {
+    // TODO: Implementar likes de comentarios
+    console.log('Like comment:', commentId);
+  };
+
+  const handleCommentSubmit = async () => {
+    if (!commentText.trim() || !user || !post.id || submittingComment) return;
+
+    try {
+      setSubmittingComment(true);
+      console.log('💬 Enviando comentario...');
+
+      const trimmedContent = commentText.trim();
+      const commentData: Omit<Comment, 'id'> = {
+        postId: post.id,
+        userId: user.uid,
+        content: trimmedContent,
+        likes: 0,
+        createdAt: new Date() as any,
+        updatedAt: new Date() as any,
+      };
+
+      // Crear comentario en Firestore
+      const commentId = await commentsService.create(commentData);
+
+      // Incrementar contador de comentarios en el post
+      await postsService.update(post.id, {
+        comments: (post.comments || 0) + 1,
+      });
+
+      // Crear notificación de comentario
+      if (userProfile && post.userId !== user.uid) {
+        try {
+          await notificationService.createCommentNotification(
+            post.userId,
+            user.uid,
+            userProfile.displayName || 'Usuario',
+            {
+              type: userProfile.avatarType,
+              id: userProfile.avatarId,
+              url: userProfile.photoURL,
+            },
+            post.id,
+            post.content,
+            commentId,
+            trimmedContent
+          );
+          console.log('🔔 Notificación de comentario creada');
+        } catch (notifError) {
+          console.error('⚠️ Error creando notificación de comentario:', notifError);
+        }
+      }
+
+      console.log('✅ Comentario enviado');
       setCommentText('');
+
+      // Cerrar el teclado
+      Keyboard.dismiss();
+    } catch (error) {
+      console.error('❌ Error enviando comentario:', error);
+    } finally {
+      setSubmittingComment(false);
     }
+  };
+
+  const handleVote = async (optionIndex: number) => {
+    if (!user || !localPoll || userVote !== null || !post.id) return;
+
+    try {
+      // Actualizar localmente de inmediato (optimistic update)
+      setUserVote(optionIndex);
+
+      // Actualizar la encuesta local
+      const updatedPoll = {
+        ...localPoll,
+        totalVotes: localPoll.totalVotes + 1,
+        options: localPoll.options.map((opt, idx) => {
+          if (idx === optionIndex) {
+            return {
+              ...opt,
+              votes: opt.votes + 1,
+              votedBy: [...opt.votedBy, user.uid],
+            };
+          }
+          return opt;
+        }),
+      };
+      setLocalPoll(updatedPoll);
+
+      // Guardar el voto en Firestore
+      await postsService.voteInPoll(post.id, optionIndex, user.uid);
+      console.log('✅ Voto guardado exitosamente en Firestore');
+
+    } catch (error) {
+      console.error('❌ Error al votar:', error);
+      // Revertir el voto si hay error
+      setUserVote(null);
+      setLocalPoll(post.poll);
+
+      const errorMessage = error instanceof Error ? error.message : 'No se pudo registrar tu voto';
+      Alert.alert('Error', errorMessage);
+    }
+  };
+
+  const getPostDate = () => {
+    if (!post.createdAt) return new Date();
+    if (typeof post.createdAt.toDate === 'function') {
+      return post.createdAt.toDate();
+    }
+    if (post.createdAt instanceof Date) {
+      return post.createdAt;
+    }
+    if (typeof post.createdAt === 'object' && 'seconds' in post.createdAt) {
+      return new Date((post.createdAt as any).seconds * 1000);
+    }
+    return new Date();
   };
 
   const renderImages = () => {
     if (!post.imageUrls || post.imageUrls.length === 0) return null;
 
+    const imageHeight = getImageHeight();
+
     if (post.imageUrls.length === 1) {
       return (
-        <View style={styles.imageContainer}>
+        <TouchableOpacity
+          style={styles.singleImageContainer}
+          onPress={() => handleImagePress(0)}
+          activeOpacity={0.98}
+        >
           <Image
             source={{ uri: post.imageUrls[0] }}
-            style={styles.image}
-            resizeMode="contain"
+            style={[
+              styles.singleImage,
+              {
+                backgroundColor: theme.colors.surface,
+                height: imageHeight,
+              }
+            ]}
+            resizeMode="cover"
           />
-        </View>
+        </TouchableOpacity>
       );
     }
 
     // Carrusel para múltiples imágenes
     return (
-      <View
-        style={styles.imageContainer}
-        onLayout={(event) => {
-          const { width } = event.nativeEvent.layout;
-          setCarouselWidth(width);
-        }}
-      >
+      <View style={styles.carouselContainer}>
         <ScrollView
           ref={scrollViewRef}
           horizontal
@@ -97,117 +338,281 @@ const PostDetailScreen: React.FC = () => {
           showsHorizontalScrollIndicator={false}
           onScroll={handleScroll}
           scrollEventThrottle={16}
-          style={{ width: '100%' }}
+          snapToInterval={carouselWidth}
+          snapToAlignment="center"
+          decelerationRate="fast"
+          style={styles.carousel}
         >
           {post.imageUrls.map((imageUrl, index) => (
-            <View key={index} style={[styles.carouselImageContainer, { width: carouselWidth }]}>
+            <TouchableOpacity
+              key={index}
+              style={[styles.carouselImageContainer, { width: carouselWidth }]}
+              onPress={() => handleImagePress(index)}
+              activeOpacity={0.98}
+            >
               <Image
                 source={{ uri: imageUrl }}
-                style={styles.image}
-                resizeMode="contain"
+                style={[
+                  styles.carouselImage,
+                  {
+                    backgroundColor: theme.colors.surface,
+                    height: imageHeight,
+                  }
+                ]}
+                resizeMode="cover"
               />
-            </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
 
         {/* Indicadores de página */}
-        {post.imageUrls.length > 1 && (
-          <>
-            <View style={styles.pageIndicatorContainer}>
-              {post.imageUrls.map((_, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.pageIndicator,
-                    {
-                      backgroundColor: index === currentImageIndex
-                        ? theme.colors.accent
-                        : 'rgba(255,255,255,0.5)',
-                    }
-                  ]}
-                />
-              ))}
-            </View>
+        <View style={styles.pageIndicatorContainer}>
+          {post.imageUrls.map((_, index) => (
+            <View
+              key={index}
+              style={[
+                styles.pageIndicator,
+                {
+                  backgroundColor: index === currentImageIndex
+                    ? theme.colors.accent
+                    : theme.colors.surface,
+                  opacity: index === currentImageIndex ? 1 : 0.5,
+                }
+              ]}
+            />
+          ))}
+        </View>
 
-            {/* Contador */}
-            <View style={[styles.imageCounter, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
-              <Text style={styles.imageCounterText}>
-                {currentImageIndex + 1}/{post.imageUrls.length}
-              </Text>
-            </View>
-          </>
-        )}
+        {/* Contador de imágenes */}
+        <View style={[styles.imageCounter, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
+          <Text style={styles.imageCounterText}>
+            {currentImageIndex + 1}/{post.imageUrls.length}
+          </Text>
+        </View>
       </View>
     );
   };
 
-  const getPostDate = () => {
-    if (!post.createdAt) return new Date();
-    // Si es un Timestamp de Firebase
-    if (typeof post.createdAt.toDate === 'function') {
-      return post.createdAt.toDate();
-    }
-    // Si ya es un objeto Date
-    if (post.createdAt instanceof Date) {
-      return post.createdAt;
-    }
-    // Si es un objeto con seconds (formato serializado de Timestamp)
-    if (typeof post.createdAt === 'object' && 'seconds' in post.createdAt) {
-      return new Date((post.createdAt as any).seconds * 1000);
-    }
-    return new Date();
+  const renderPoll = () => {
+    if (!localPoll) return null;
+
+    const poll = localPoll;
+    const now = new Date();
+    const endsAt = poll.endsAt.toDate();
+    const hasEnded = now > endsAt;
+    const hasVoted = userVote !== null;
+    const totalVotes = poll.totalVotes || 0;
+
+    // Calcular tiempo restante
+    const getTimeRemaining = () => {
+      if (hasEnded) return 'Encuesta finalizada';
+
+      const diff = endsAt.getTime() - now.getTime();
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+      if (days > 0) return `${days} día${days > 1 ? 's' : ''} restante${days > 1 ? 's' : ''}`;
+      if (hours > 0) return `${hours} hora${hours > 1 ? 's' : ''} restante${hours > 1 ? 's' : ''}`;
+      return 'Menos de 1 hora';
+    };
+
+    return (
+      <View style={[styles.pollContainer, {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.border,
+      }]}>
+        {poll.options.map((option, index) => {
+          const percentage = totalVotes > 0 ? (option.votes / totalVotes) * 100 : 0;
+          const isSelected = userVote === index;
+
+          return (
+            <TouchableOpacity
+              key={index}
+              style={[
+                styles.pollOption,
+                {
+                  backgroundColor: theme.colors.background,
+                  borderColor: isSelected ? theme.colors.accent : theme.colors.border,
+                  borderWidth: isSelected ? 2 : 1,
+                },
+                hasEnded && styles.pollOptionDisabled,
+              ]}
+              onPress={() => !hasVoted && !hasEnded && handleVote(index)}
+              disabled={hasVoted || hasEnded}
+              activeOpacity={0.7}
+            >
+              {/* Barra de progreso de fondo */}
+              {(hasVoted || hasEnded) && (
+                <View
+                  style={[
+                    styles.pollProgress,
+                    {
+                      backgroundColor: isSelected
+                        ? theme.colors.accent + '30'
+                        : theme.colors.surface,
+                      width: `${percentage}%`,
+                    },
+                  ]}
+                />
+              )}
+
+              {/* Contenido de la opción */}
+              <View style={styles.pollOptionContent}>
+                <Text
+                  style={[
+                    styles.pollOptionText,
+                    {
+                      color: isSelected ? theme.colors.accent : theme.colors.text,
+                      fontWeight: isSelected ? '600' : '400',
+                    },
+                  ]}
+                >
+                  {option.text}
+                </Text>
+
+                {(hasVoted || hasEnded) && (
+                  <Text
+                    style={[
+                      styles.pollPercentage,
+                      {
+                        color: isSelected ? theme.colors.accent : theme.colors.textSecondary,
+                        fontWeight: isSelected ? '600' : '400',
+                      },
+                    ]}
+                  >
+                    {percentage.toFixed(0)}%
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+
+        {/* Footer de la encuesta */}
+        <View style={styles.pollFooter}>
+          <Text style={[styles.pollVotes, { color: theme.colors.textSecondary }]}>
+            {totalVotes} voto{totalVotes !== 1 ? 's' : ''}
+          </Text>
+          <Text style={[styles.pollTimeRemaining, { color: theme.colors.textSecondary }]}>
+            • {getTimeRemaining()}
+          </Text>
+        </View>
+      </View>
+    );
   };
 
-  const renderPostInfo = () => (
-    <View style={[styles.infoContainer, { backgroundColor: theme.colors.background }]}>
-      {/* Header del post */}
-      <View style={[styles.postHeader, { borderBottomColor: theme.colors.border }]}>
-        <View style={styles.authorInfo}>
-          {postAuthor && (
-            <AvatarDisplay
-              size={scale(40)}
-              avatarType={postAuthor.avatarType || 'predefined'}
-              avatarId={postAuthor.avatarId || 'male'}
-              photoURL={postAuthor.photoURL}
-              backgroundColor={theme.colors.accent}
-              showBorder={false}
-            />
-          )}
-          <View style={styles.authorText}>
-            <Text style={[styles.authorName, { color: theme.colors.text }]}>
-              {postAuthor?.displayName || 'Usuario Anónimo'}
+  return (
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={0}
+    >
+      {/* Header */}
+      <View style={[styles.header, {
+        backgroundColor: theme.colors.card,
+        borderBottomColor: theme.colors.border,
+        paddingTop: insets.top + SPACING.sm,
+      }]}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Post</Text>
+        <View style={styles.headerRight} />
+      </View>
+
+      {/* Content */}
+      <ScrollView
+        style={styles.scrollContent}
+        contentContainerStyle={styles.scrollContentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Author info */}
+        <View style={styles.authorSection}>
+          <TouchableOpacity
+            style={styles.authorInfo}
+            onPress={handleProfilePress}
+            activeOpacity={0.7}
+            disabled={loadingAuthor}
+          >
+            {loadingAuthor ? (
+              <View style={[styles.avatarPlaceholder, { backgroundColor: theme.colors.surface }]}>
+                <Ionicons name="person" size={scale(20)} color={theme.colors.textSecondary} />
+              </View>
+            ) : postAuthor ? (
+              <AvatarDisplay
+                size={scale(48)}
+                avatarType={postAuthor.avatarType || 'predefined'}
+                avatarId={postAuthor.avatarId || 'male'}
+                photoURL={typeof postAuthor.photoURL === 'string' ? postAuthor.photoURL : undefined}
+                photoURLThumbnail={typeof postAuthor.photoURLThumbnail === 'string' ? postAuthor.photoURLThumbnail : undefined}
+                backgroundColor={theme.colors.accent}
+                showBorder={false}
+              />
+            ) : (
+              <View style={[styles.avatarPlaceholder, { backgroundColor: theme.colors.accent }]}>
+                <Text style={styles.avatarText}>👤</Text>
+              </View>
+            )}
+            <View style={styles.authorText}>
+              <Text style={[styles.authorName, { color: theme.colors.text }]}>
+                {loadingAuthor ? 'Cargando...' : postAuthor?.displayName || 'Usuario Anónimo'}
+              </Text>
+              <Text style={[styles.timestamp, { color: theme.colors.textSecondary }]}>
+                {getRelativeTime(getPostDate())}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Post content */}
+        <View style={styles.contentSection}>
+          <Text style={[styles.postContent, { color: theme.colors.text }]}>
+            {post.content}
+          </Text>
+        </View>
+
+        {/* Images */}
+        {renderImages()}
+
+        {/* Poll */}
+        {renderPoll()}
+
+        {/* Stats */}
+        <View style={[styles.stats, {
+          borderTopColor: theme.colors.border,
+          borderBottomColor: theme.colors.border,
+        }]}>
+          <View style={styles.statItem}>
+            <Ionicons name="eye-outline" size={ICON_SIZE.sm} color={theme.colors.textSecondary} />
+            <Text style={[styles.statText, { color: theme.colors.textSecondary }]}>
+              <Text style={{ fontWeight: FONT_WEIGHT.semibold, color: theme.colors.text }}>
+                {formatNumber(post.views || 0)}
+              </Text> vistas
             </Text>
-            <Text style={[styles.timestamp, { color: theme.colors.textSecondary }]}>
-              {getRelativeTime(getPostDate())}
+          </View>
+          <View style={styles.statItem}>
+            <Ionicons name="heart-outline" size={ICON_SIZE.sm} color={theme.colors.textSecondary} />
+            <Text style={[styles.statText, { color: theme.colors.textSecondary }]}>
+              <Text style={{ fontWeight: FONT_WEIGHT.semibold, color: theme.colors.text }}>
+                {formatNumber(likesCount)}
+              </Text> me gusta
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <Ionicons name="chatbubble-outline" size={ICON_SIZE.sm} color={theme.colors.textSecondary} />
+            <Text style={[styles.statText, { color: theme.colors.textSecondary }]}>
+              <Text style={{ fontWeight: FONT_WEIGHT.semibold, color: theme.colors.text }}>
+                {formatNumber(post.comments)}
+              </Text> comentarios
             </Text>
           </View>
         </View>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeButton}>
-          <Ionicons name="close" size={ICON_SIZE.lg} color={theme.colors.text} />
-        </TouchableOpacity>
-      </View>
 
-      {/* Contenido del post */}
-      <ScrollView style={styles.contentScroll} showsVerticalScrollIndicator={false}>
-        <Text style={[styles.postContent, { color: theme.colors.text }]}>
-          {post.content}
-        </Text>
-
-        {/* Estadísticas */}
-        <View style={[styles.stats, { borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}>
-          <Text style={[styles.statText, { color: theme.colors.textSecondary }]}>
-            <Text style={{ fontWeight: FONT_WEIGHT.semibold, color: theme.colors.text }}>
-              {formatNumber(likesCount)}
-            </Text> Me gusta
-          </Text>
-          <Text style={[styles.statText, { color: theme.colors.textSecondary }]}>
-            <Text style={{ fontWeight: FONT_WEIGHT.semibold, color: theme.colors.text }}>
-              {formatNumber(post.comments)}
-            </Text> Comentarios
-          </Text>
-        </View>
-
-        {/* Acciones */}
+        {/* Actions */}
         <View style={[styles.actions, { borderBottomColor: theme.colors.border }]}>
           <TouchableOpacity
             style={styles.actionButton}
@@ -218,7 +623,9 @@ const PostDetailScreen: React.FC = () => {
               size={ICON_SIZE.md}
               color={isLiked ? theme.colors.like : theme.colors.textSecondary}
             />
-            <Text style={[styles.actionText, { color: isLiked ? theme.colors.like : theme.colors.textSecondary }]}>
+            <Text style={[styles.actionText, {
+              color: isLiked ? theme.colors.like : theme.colors.textSecondary
+            }]}>
               Me gusta
             </Text>
           </TouchableOpacity>
@@ -246,150 +653,222 @@ const PostDetailScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Sección de comentarios */}
+        {/* Comments section */}
         <View style={styles.commentsSection}>
           <Text style={[styles.commentsTitle, { color: theme.colors.text }]}>
-            Comentarios
+            Comentarios {comments.length > 0 && `(${comments.length})`}
           </Text>
 
-          {/* Placeholder - No hay comentarios aún */}
-          <View style={styles.noComments}>
-            <Ionicons name="chatbubbles-outline" size={scale(48)} color={theme.colors.textSecondary} />
-            <Text style={[styles.noCommentsText, { color: theme.colors.textSecondary }]}>
-              Sé el primero en comentar
-            </Text>
-          </View>
+          {loadingComments ? (
+            <View style={styles.loadingComments}>
+              <ActivityIndicator size="small" color={theme.colors.accent} />
+              <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
+                Cargando comentarios...
+              </Text>
+            </View>
+          ) : comments.length === 0 ? (
+            <View style={styles.noComments}>
+              <View style={[styles.noCommentsIcon, { backgroundColor: theme.colors.surface }]}>
+                <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.textSecondary} />
+              </View>
+              <Text style={[styles.noCommentsText, { color: theme.colors.textSecondary }]}>
+                Sé el primero en comentar
+              </Text>
+            </View>
+          ) : (
+            <View>
+              {comments.map((comment) => (
+                <CommentCard
+                  key={comment.id}
+                  comment={comment}
+                  onProfilePress={handleCommentProfilePress}
+                  onLike={handleCommentLike}
+                />
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
 
-      {/* Input de comentario */}
-      <View style={[styles.commentInputContainer, { borderTopColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
-        {userProfile && (
-          <AvatarDisplay
-            size={scale(32)}
-            avatarType={userProfile.avatarType || 'predefined'}
-            avatarId={userProfile.avatarId || 'male'}
-            photoURL={userProfile.photoURL}
-            backgroundColor={theme.colors.accent}
-            showBorder={false}
+      {/* Comment input */}
+      <View style={[styles.commentInputContainer, {
+        backgroundColor: theme.colors.background,
+        paddingBottom: insets.bottom || SPACING.sm,
+      }]}>
+        <View style={styles.avatarContainer}>
+          {userProfile && (
+            <AvatarDisplay
+              size={scale(40)}
+              avatarType={userProfile.avatarType || 'predefined'}
+              avatarId={userProfile.avatarId || 'male'}
+              photoURL={typeof userProfile.photoURL === 'string' ? userProfile.photoURL : undefined}
+              photoURLThumbnail={typeof userProfile.photoURLThumbnail === 'string' ? userProfile.photoURLThumbnail : undefined}
+              backgroundColor={theme.colors.accent}
+              showBorder={false}
+            />
+          )}
+        </View>
+        <View style={[styles.commentInputWrapper, {
+          backgroundColor: theme.colors.surface,
+        }]}>
+          <TextInput
+            style={[styles.commentInput, {
+              color: theme.colors.text,
+            }]}
+            placeholder="Escribe un comentario..."
+            placeholderTextColor={theme.colors.textSecondary}
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            maxLength={500}
           />
-        )}
-        <TextInput
-          style={[styles.commentInput, {
-            backgroundColor: theme.colors.surface,
-            color: theme.colors.text,
-            borderColor: theme.colors.border,
-          }]}
-          placeholder="Escribe un comentario..."
-          placeholderTextColor={theme.colors.textSecondary}
-          value={commentText}
-          onChangeText={setCommentText}
-          multiline
-          maxLength={500}
-        />
+          <TouchableOpacity
+            style={styles.imageButton}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="image-outline"
+              size={ICON_SIZE.md}
+              color={theme.colors.text}
+            />
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity
           style={[styles.sendButton, {
-            backgroundColor: commentText.trim() ? theme.colors.accent : theme.colors.surface,
-            opacity: commentText.trim() ? 1 : 0.5,
+            backgroundColor: commentText.trim() && !submittingComment ? theme.colors.accent : theme.colors.surface,
           }]}
           onPress={handleCommentSubmit}
-          disabled={!commentText.trim()}
+          disabled={!commentText.trim() || submittingComment}
         >
-          <Ionicons name="send" size={ICON_SIZE.sm} color="white" />
+          {submittingComment ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Ionicons
+              name="send"
+              size={ICON_SIZE.sm}
+              color={commentText.trim() ? '#FFFFFF' : theme.colors.textSecondary}
+            />
+          )}
         </TouchableOpacity>
       </View>
-    </View>
-  );
 
-  return (
-    <View style={[styles.container, { backgroundColor: 'rgba(0, 0, 0, 0.85)' }]}>
-      <View style={[styles.content, isDesktop && styles.contentDesktop]}>
-        {isDesktop ? (
-          // Layout Desktop: Imagen a la izquierda, Info a la derecha
-          <>
-            <View style={styles.leftColumn}>
-              {renderImages()}
-            </View>
-            <View style={styles.rightColumn}>
-              {renderPostInfo()}
-            </View>
-          </>
-        ) : (
-          // Layout Mobile: Todo vertical
-          <View style={styles.mobileLayout}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.mobileCloseButton}>
-              <Ionicons name="close" size={ICON_SIZE.xl} color="white" />
-            </TouchableOpacity>
-            {renderImages()}
-            {renderPostInfo()}
-          </View>
-        )}
-      </View>
-    </View>
+      {/* Image Viewer Modal */}
+      {post.imageUrls && post.imageUrls.length > 0 && (
+        <ImageViewer
+          visible={imageViewerVisible}
+          imageUrls={post.imageUrls}
+          initialIndex={selectedImageIndex}
+          onClose={() => setImageViewerVisible(false)}
+        />
+      )}
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.sm,
+    borderBottomWidth: 0.5,
+  },
+  backButton: {
+    padding: SPACING.xs,
+    width: 40,
+  },
+  headerTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    letterSpacing: -0.3,
+  },
+  headerRight: {
+    width: 40,
+  },
+  scrollContent: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    paddingBottom: SPACING.xl,
+  },
+  authorSection: {
+    padding: SPACING.lg,
+  },
+  authorInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  avatarPlaceholder: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(24),
     justifyContent: 'center',
     alignItems: 'center',
   },
-  content: {
-    width: '100%',
-    height: '100%',
+  avatarText: {
+    fontSize: FONT_SIZE.xl,
+    color: 'white',
   },
-  contentDesktop: {
-    flexDirection: 'row',
-    maxWidth: screenWidth * 0.9,
-    maxHeight: screenHeight * 0.9,
-    width: scale(1200),
-    height: '90%',
+  authorText: {
+    flex: 1,
+  },
+  authorName: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    letterSpacing: -0.3,
+  },
+  timestamp: {
+    fontSize: FONT_SIZE.sm,
+    marginTop: scale(2),
+  },
+  contentSection: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+  },
+  postContent: {
+    fontSize: FONT_SIZE.lg,
+    lineHeight: scale(24),
+    letterSpacing: -0.2,
+  },
+  singleImageContainer: {
+    position: 'relative',
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  singleImage: {
+    width: '100%',
+  },
+  carouselContainer: {
+    position: 'relative',
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
     borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
   },
-  leftColumn: {
-    flex: 1.2,
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  rightColumn: {
-    flex: 1,
-    minWidth: scale(400),
-    maxWidth: scale(500),
-  },
-  mobileLayout: {
-    flex: 1,
-  },
-  mobileCloseButton: {
-    position: 'absolute',
-    top: scale(40),
-    right: SPACING.lg,
-    zIndex: 10,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: BORDER_RADIUS.full,
-    padding: SPACING.sm,
-  },
-  imageContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
+  carousel: {
+    borderRadius: BORDER_RADIUS.lg,
   },
   carouselImageContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: '100%',
+    position: 'relative',
+  },
+  carouselImage: {
+    width: '100%',
   },
   pageIndicatorContainer: {
     position: 'absolute',
-    bottom: SPACING.lg,
+    bottom: SPACING.md,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
     gap: scale(6),
   },
   pageIndicator: {
@@ -399,8 +878,8 @@ const styles = StyleSheet.create({
   },
   imageCounter: {
     position: 'absolute',
-    top: SPACING.lg,
-    right: SPACING.lg,
+    top: SPACING.md,
+    right: SPACING.md,
     paddingHorizontal: SPACING.sm,
     paddingVertical: scale(4),
     borderRadius: BORDER_RADIUS.sm,
@@ -410,50 +889,19 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     fontWeight: FONT_WEIGHT.semibold,
   },
-  infoContainer: {
-    flex: 1,
-  },
-  postHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: SPACING.lg,
-    borderBottomWidth: scale(1),
-  },
-  authorInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  authorText: {
-    flex: 1,
-  },
-  authorName: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: FONT_WEIGHT.semibold,
-  },
-  timestamp: {
-    fontSize: FONT_SIZE.sm,
-    marginTop: scale(2),
-  },
-  closeButton: {
-    padding: SPACING.xs,
-  },
-  contentScroll: {
-    flex: 1,
-  },
-  postContent: {
-    fontSize: FONT_SIZE.md,
-    lineHeight: scale(22),
-    padding: SPACING.lg,
-  },
   stats: {
     flexDirection: 'row',
-    gap: SPACING.lg,
+    flexWrap: 'wrap',
+    gap: SPACING.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderTopWidth: scale(1),
     borderBottomWidth: scale(1),
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(4),
   },
   statText: {
     fontSize: FONT_SIZE.sm,
@@ -461,7 +909,7 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.md,
     borderBottomWidth: scale(1),
   },
   actionButton: {
@@ -476,43 +924,137 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.medium,
   },
   commentsSection: {
-    padding: SPACING.lg,
+    paddingTop: SPACING.lg,
   },
   commentsTitle: {
     fontSize: FONT_SIZE.lg,
-    fontWeight: FONT_WEIGHT.semibold,
+    fontWeight: FONT_WEIGHT.bold,
     marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    letterSpacing: -0.3,
+  },
+  loadingComments: {
+    alignItems: 'center',
+    paddingVertical: scale(40),
+  },
+  loadingText: {
+    marginTop: SPACING.sm,
+    fontSize: FONT_SIZE.sm,
   },
   noComments: {
     alignItems: 'center',
     paddingVertical: scale(40),
   },
+  noCommentsIcon: {
+    width: scale(80),
+    height: scale(80),
+    borderRadius: scale(40),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
   noCommentsText: {
-    fontSize: FONT_SIZE.sm,
-    marginTop: SPACING.md,
+    fontSize: FONT_SIZE.base,
+    textAlign: 'center',
   },
   commentInputContainer: {
     flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    gap: SPACING.md,
+  },
+  avatarContainer: {
+    height: scale(44),
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: SPACING.sm,
-    padding: SPACING.lg,
-    borderTopWidth: scale(1),
+  },
+  commentInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: BORDER_RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    minHeight: scale(44),
+    maxHeight: scale(100),
   },
   commentInput: {
     flex: 1,
-    borderWidth: scale(1),
-    borderRadius: BORDER_RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    fontSize: FONT_SIZE.sm,
-    maxHeight: scale(100),
+    fontSize: FONT_SIZE.base,
+    fontWeight: FONT_WEIGHT.regular,
+    letterSpacing: -0.1,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    outlineStyle: 'none',
   },
-  sendButton: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: BORDER_RADIUS.full,
+  imageButton: {
+    padding: SPACING.xs,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  sendButton: {
+    width: scale(44),
+    height: scale(44),
+    borderRadius: scale(22),
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  pollContainer: {
+    marginHorizontal: SPACING.lg,
+    marginVertical: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    gap: SPACING.sm,
+  },
+  pollOption: {
+    position: 'relative',
+    minHeight: scale(48),
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  pollOptionDisabled: {
+    opacity: 0.8,
+  },
+  pollProgress: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  pollOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    zIndex: 1,
+  },
+  pollOptionText: {
+    fontSize: FONT_SIZE.base,
+    flex: 1,
+  },
+  pollPercentage: {
+    fontSize: FONT_SIZE.base,
+    marginLeft: SPACING.md,
+  },
+  pollFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
+  },
+  pollVotes: {
+    fontSize: FONT_SIZE.sm,
+  },
+  pollTimeRemaining: {
+    fontSize: FONT_SIZE.sm,
   },
 });
 

@@ -12,6 +12,7 @@ import {
   TextInput,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
@@ -143,7 +144,11 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   };
 
   const renderPostInfo = () => (
-    <View style={[styles.infoContainer, { backgroundColor: theme.colors.background }]}>
+    <KeyboardAvoidingView
+      style={[styles.infoContainer, { backgroundColor: theme.colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+    >
       {/* Header del post */}
       <View style={[styles.postHeader, { borderBottomColor: theme.colors.border }]}>
         <View style={styles.authorInfo}>
@@ -152,7 +157,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
               size={scale(40)}
               avatarType={postAuthor.avatarType || 'predefined'}
               avatarId={postAuthor.avatarId || 'male'}
-              photoURL={postAuthor.photoURL}
+              photoURL={typeof postAuthor.photoURL === 'string' ? postAuthor.photoURL : undefined}
+              photoURLThumbnail={typeof postAuthor.photoURLThumbnail === 'string' ? postAuthor.photoURLThumbnail : undefined}
               backgroundColor={theme.colors.accent}
               showBorder={false}
             />
@@ -247,30 +253,39 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       </ScrollView>
 
       {/* Input de comentario */}
-      <View style={[styles.commentInputContainer, { borderTopColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
-        {userProfile && (
+      <View style={[styles.commentInputContainer, {
+        borderTopColor: theme.colors.border,
+        backgroundColor: theme.colors.background,
+        paddingTop: SPACING.sm,
+        paddingBottom: Platform.OS === 'ios' ? SPACING.sm : SPACING.lg,
+      }]}>
+        {userProfile && Platform.OS === 'ios' && (
           <AvatarDisplay
             size={scale(32)}
             avatarType={userProfile.avatarType || 'predefined'}
             avatarId={userProfile.avatarId || 'male'}
-            photoURL={userProfile.photoURL}
+            photoURL={typeof userProfile.photoURL === 'string' ? userProfile.photoURL : undefined}
+            photoURLThumbnail={typeof userProfile.photoURLThumbnail === 'string' ? userProfile.photoURLThumbnail : undefined}
             backgroundColor={theme.colors.accent}
             showBorder={false}
           />
         )}
-        <TextInput
-          style={[styles.commentInput, {
-            backgroundColor: theme.colors.surface,
-            color: theme.colors.text,
-            borderColor: theme.colors.border,
-          }]}
-          placeholder="Escribe un comentario..."
-          placeholderTextColor={theme.colors.textSecondary}
-          value={commentText}
-          onChangeText={setCommentText}
-          multiline
-          maxLength={500}
-        />
+        <View style={[styles.inputWrapper, {
+          backgroundColor: theme.colors.surface,
+        }]}>
+          <TextInput
+            style={[styles.commentInput, {
+              color: theme.colors.text,
+            }]}
+            placeholder="Escribe un comentario..."
+            placeholderTextColor={theme.colors.textSecondary}
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            numberOfLines={1}
+            maxLength={500}
+          />
+        </View>
         <TouchableOpacity
           style={[styles.sendButton, {
             backgroundColor: commentText.trim() ? theme.colors.accent : theme.colors.surface,
@@ -282,7 +297,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
           <Ionicons name="send" size={ICON_SIZE.sm} color="white" />
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 
   return (
@@ -493,24 +508,30 @@ const styles = StyleSheet.create({
   },
   commentInputContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: SPACING.sm,
-    padding: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
     borderTopWidth: scale(1),
+  },
+  inputWrapper: {
+    flex: 1,
+    borderRadius: BORDER_RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    minHeight: 44,
+    maxHeight: scale(100),
+    justifyContent: 'center',
   },
   commentInput: {
     flex: 1,
-    borderWidth: scale(1),
-    borderRadius: BORDER_RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
     fontSize: FONT_SIZE.sm,
-    maxHeight: scale(100),
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    outlineStyle: 'none',
   },
   sendButton: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: BORDER_RADIUS.full,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },

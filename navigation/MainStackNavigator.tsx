@@ -10,6 +10,8 @@ import SettingsScreen from '../screens/SettingsScreen';
 import SearchScreen from '../screens/SearchScreen';
 import CreateScreen from '../screens/CreateScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
+import UserProfileScreen from '../screens/UserProfileScreen';
+import CommunityScreen from '../screens/CommunityScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import AuthStackNavigator from './AuthStackNavigator';
 import Sidebar from '../components/Sidebar';
@@ -25,6 +27,12 @@ export type MainStackParamList = {
   PostDetail: {
     post: Post;
   };
+  UserProfile: {
+    userId: string;
+  };
+  Community: {
+    communityId: string;
+  };
 };
 
 const Stack = createStackNavigator<MainStackParamList>();
@@ -39,11 +47,7 @@ const MainStackNavigator: React.FC = () => {
   React.useEffect(() => {
     // Después de que authLoading sea false por primera vez, marcar que ya no es carga inicial
     if (!authLoading && isInitialLoad) {
-      // Pequeño delay para asegurar que Firebase terminó de verificar
-      const timer = setTimeout(() => {
-        setIsInitialLoad(false);
-      }, 100);
-      return () => clearTimeout(timer);
+      setIsInitialLoad(false);
     }
   }, [authLoading, isInitialLoad]);
 
@@ -51,8 +55,8 @@ const MainStackNavigator: React.FC = () => {
   // O durante la carga inicial para evitar flash de login
   if (authLoading || (user && profileLoading) || isInitialLoad) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: theme.colors.background }]}>
-        <ActivityIndicator size="large" color={theme.colors.accent} />
+      <View style={[styles.loadingContainer, { backgroundColor: '#0A0A0A' }]}>
+        <ActivityIndicator size="large" color="#8B5CF6" />
       </View>
     );
   }
@@ -63,25 +67,23 @@ const MainStackNavigator: React.FC = () => {
   }
 
   // Si el usuario está autenticado pero necesita completar el onboarding
-  // (perfil sin displayName configurado o creado recientemente)
+  // (perfil sin displayName configurado, creado recientemente, o sin comunidades seleccionadas)
   const needsOnboarding = !userProfile?.displayName ||
     userProfile.displayName === user.email?.split('@')[0] ||
-    userProfile.displayName === 'Usuario Anónimo';
+    userProfile.displayName === 'Usuario Anónimo' ||
+    !userProfile.hasCompletedCommunityOnboarding;
 
-  console.log('🔍 Verificando onboarding:', {
-    hasUserProfile: !!userProfile,
+  console.log('🧭 Navigation check:', {
     displayName: userProfile?.displayName,
-    needsOnboarding,
     email: user.email,
-    profileLoading,
+    hasCompletedCommunityOnboarding: userProfile?.hasCompletedCommunityOnboarding,
+    joinedCommunities: userProfile?.joinedCommunities?.length,
+    needsOnboarding,
   });
 
   if (needsOnboarding) {
-    console.log('📝 Mostrando OnboardingScreen - needsOnboarding:', needsOnboarding);
     return <OnboardingScreen />;
   }
-
-  console.log('✅ Mostrando Main App - displayName:', userProfile?.displayName);
 
   // Usuario autenticado, mostrar la app principal
   return (
@@ -144,6 +146,9 @@ const MainStackNavigator: React.FC = () => {
         name="Search"
         options={{
           presentation: Platform.OS === 'web' ? 'card' : 'modal',
+          headerShown: false,
+          gestureEnabled: true,
+          gestureDirection: 'vertical',
         }}
       >
         {(props) => (
@@ -170,7 +175,9 @@ const MainStackNavigator: React.FC = () => {
       <Stack.Screen
         name="Create"
         options={{
-          presentation: Platform.OS === 'web' ? 'card' : 'modal',
+          presentation: 'card',
+          headerShown: false,
+          gestureEnabled: false,
         }}
       >
         {(props) => (
@@ -198,7 +205,24 @@ const MainStackNavigator: React.FC = () => {
         name="PostDetail"
         component={PostDetailScreen}
         options={{
-          presentation: Platform.OS === 'web' ? 'card' : 'modal',
+          presentation: 'card',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="UserProfile"
+        component={UserProfileScreen}
+        options={{
+          presentation: 'card',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="Community"
+        component={CommunityScreen}
+        options={{
+          presentation: 'card',
+          headerShown: false,
         }}
       />
     </Stack.Navigator>

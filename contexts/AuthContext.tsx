@@ -164,7 +164,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
       });
 
-      if (result.type === 'success' && result.params.id_token) {
+      console.log('📋 Google Sign-In result type:', result.type);
+
+      if (result.type === 'success' && result.params?.id_token) {
         const credential = GoogleAuthProvider.credential(result.params.id_token);
         await signInWithCredential(auth, credential);
         console.log('✅ Google Sign-In exitoso');
@@ -172,8 +174,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.log('⚠️ Usuario canceló Google Sign-In');
         // Usuario canceló, no es un error
         return;
+      } else if (result.type === 'dismiss') {
+        // El modal se cerró - podría ser porque el OAuth completó por redirect
+        // Esperamos un momento para ver si el auth state cambia
+        console.log('📋 Modal cerrado, verificando estado de autenticación...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Si el usuario ya está autenticado, no es un error
+        if (auth.currentUser) {
+          console.log('✅ Google Sign-In exitoso (via redirect)');
+          return;
+        }
+        // Si no hay usuario, probablemente el usuario cerró el modal
+        console.log('⚠️ Usuario cerró el modal sin autenticarse');
+        return;
       } else {
-        throw new Error('Error en la autenticación con Google');
+        // Otros tipos de resultado - verificar si hay un token en los params
+        if (result.params?.id_token) {
+          const credential = GoogleAuthProvider.credential(result.params.id_token);
+          await signInWithCredential(auth, credential);
+          console.log('✅ Google Sign-In exitoso');
+        } else {
+          console.log('⚠️ Resultado inesperado:', result.type, result.params);
+          // No lanzar error inmediatamente, el auth state podría cambiar
+        }
       }
     } catch (error) {
       console.error('❌ Error en Google Sign-In:', error);

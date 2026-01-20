@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,17 +21,29 @@ import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { postsService } from '../services/firestoreService';
 import { uploadPostImage } from '../services/storageService';
+import { useCommunities } from '../hooks/useCommunities';
+import { Community } from '../services/communityService';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { Timestamp } from 'firebase/firestore';
-import Header from '../components/Header';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, ICON_SIZE } from '../constants/design';
 import { scale } from '../utils/scale';
+import AvatarDisplay from '../components/avatars/AvatarDisplay';
 
 interface MediaItem {
   type: 'image' | 'video';
   uri: string;
   id: string;
+}
+
+interface PollOption {
+  id: string;
+  text: string;
+}
+
+interface Poll {
+  options: PollOption[];
+  duration: number; // duración en horas
 }
 
 const CreateScreen: React.FC = () => {
@@ -40,25 +52,43 @@ const CreateScreen: React.FC = () => {
   const { userProfile } = useUserProfile();
   const { contentMaxWidth } = useResponsive();
   const navigation = useNavigation();
+
+  // Communities
+  const { officialCommunities, isLoading: communitiesLoading } = useCommunities(user?.uid);
+  const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(null);
+
   const [postText, setPostText] = useState('');
   const [attachedMedia, setAttachedMedia] = useState<MediaItem[]>([]);
   const [isPublishing, setIsPublishing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+  const [poll, setPoll] = useState<Poll | null>(null);
 
-  const maxTextLength = 300;
+  const maxTextLength = 500;
   const maxImages = 4;
+  const maxPollOptions = 4;
+  const minPollOptions = 2;
   const textProgress = postText.length / maxTextLength;
   const isTextOverLimit = postText.length > maxTextLength;
-  const canPublish = postText.trim().length > 0 && !isTextOverLimit && !isPublishing;
 
-  // Funciones de navegación para el header
-  const handleSearchPress = () => {
-    navigation.navigate('Search' as never);
-  };
+  // Validar que las opciones de encuesta tengan texto
+  const isPollValid = poll
+    ? poll.options.length >= minPollOptions &&
+      poll.options.every(opt => opt.text.trim().length > 0)
+    : true;
 
-  const handleProfilePress = () => {
-    navigation.navigate('Settings' as never);
-  };
+  // Mostrar todas las comunidades oficiales para publicar
+  const getAvailableCommunities = useCallback(() => {
+    return officialCommunities;
+  }, [officialCommunities]);
+
+  // Auto-seleccionar la primera comunidad cuando se cargan
+  useEffect(() => {
+    if (officialCommunities.length > 0 && !selectedCommunity) {
+      setSelectedCommunity(officialCommunities[0]);
+    }
+  }, [officialCommunities, selectedCommunity]);
+
+  const canPublish = postText.trim().length > 0 && !isTextOverLimit && !isPublishing && isPollValid && selectedCommunity !== null;
 
   const handleClose = () => {
     navigation.goBack();
@@ -174,30 +204,6 @@ const CreateScreen: React.FC = () => {
     }
   };
 
-  const handleAttachMedia = () => {
-    if (attachedMedia.length >= maxImages) {
-      Alert.alert('Límite alcanzado', `Solo puedes adjuntar hasta ${maxImages} imágenes.`);
-      return;
-    }
-
-    // En web, ir directo a seleccionar archivo (no hay cámara)
-    if (Platform.OS === 'web') {
-      pickImageFromGallery();
-      return;
-    }
-
-    // En mobile, mostrar opciones de cámara y galería
-    Alert.alert(
-      'Agregar Imagen',
-      'Selecciona de dónde quieres obtener la imagen',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Cámara', onPress: takePhoto },
-        { text: 'Galería', onPress: pickImageFromGallery },
-      ]
-    );
-  };
-
   const removeMedia = (mediaId: string) => {
     setAttachedMedia(prev => prev.filter(item => item.id !== mediaId));
   };
@@ -218,39 +224,46 @@ const CreateScreen: React.FC = () => {
       return;
     }
 
+    if (!selectedCommunity) {
+      Alert.alert('Comunidad requerida', 'Selecciona una comunidad para publicar');
+      return;
+    }
+
     console.log('🚀 Iniciando publicación...');
     console.log('👤 Usuario ID:', user.uid);
     console.log('📝 Contenido:', postText.trim());
     console.log('🖼️ Imágenes adjuntas:', attachedMedia.length);
+    console.log('🏘️ Comunidad:', selectedCommunity.name);
 
     setIsPublishing(true);
 
     try {
       // Subir imágenes a Firebase Storage si las hay
       let imageUrls: string[] = [];
-      
+      let thumbnailUrls: string[] = [];
+
       if (attachedMedia.length > 0) {
         console.log('📤 Subiendo', attachedMedia.length, 'imágenes...');
-        
+
         for (let i = 0; i < attachedMedia.length; i++) {
           const media = attachedMedia[i];
           try {
             console.log(`🖼️ Subiendo imagen ${i + 1}/${attachedMedia.length}:`, media.id);
-            
+
             // Convertir URI a blob
             console.log('🔄 Convirtiendo URI a blob...');
             const response = await fetch(media.uri);
-            
+
             if (!response.ok) {
               throw new Error(`Error al obtener la imagen: ${response.status} ${response.statusText}`);
             }
-            
+
             const blob = await response.blob();
             console.log('✅ Blob creado, tamaño:', blob.size, 'bytes');
-            
-            // Subir a Firebase Storage
+
+            // Subir a Firebase Storage (full size y thumbnail)
             console.log('☁️ Subiendo a Firebase Storage...');
-            const imageUrl = await uploadPostImage(
+            const { fullSize, thumbnail } = await uploadPostImage(
               blob,
               user.uid,
               (progress) => {
@@ -261,9 +274,11 @@ const CreateScreen: React.FC = () => {
                 }));
               }
             );
-            
-            console.log('✅ Imagen subida exitosamente:', imageUrl);
-            imageUrls.push(imageUrl);
+
+            console.log('✅ Imagen full size subida:', fullSize);
+            console.log('✅ Thumbnail subido:', thumbnail);
+            imageUrls.push(fullSize);
+            thumbnailUrls.push(thumbnail);
           } catch (error) {
             console.error('Error uploading image:', error);
             Alert.alert(
@@ -281,18 +296,39 @@ const CreateScreen: React.FC = () => {
       console.log('🏷️ Hashtags encontrados:', hashtags);
 
       // Crear el post en Firestore
-      const postData = {
+      const postData: any = {
         userId: user.uid,
         content: postText.trim(),
         imageUrls,
+        imageUrlsThumbnails: thumbnailUrls,
         likes: 0,
         comments: 0,
         shares: 0,
+        views: 0,
         isPrivate: false,
         hashtags,
+        // Community data
+        communityId: selectedCommunity.id,
+        communitySlug: selectedCommunity.slug,
+        // Voting system (initialize with 0)
+        agreementCount: 0,
+        disagreementCount: 0,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       };
+
+      // Solo agregar poll si existe (evitar undefined en Firestore)
+      if (poll) {
+        postData.poll = {
+          options: poll.options.map(opt => ({
+            text: opt.text.trim(),
+            votes: 0,
+            votedBy: [],
+          })),
+          endsAt: Timestamp.fromMillis(Date.now() + poll.duration * 60 * 60 * 1000),
+          totalVotes: 0,
+        };
+      }
 
       console.log('💾 Guardando post en Firestore...', postData);
       const postId = await postsService.create(postData);
@@ -302,20 +338,10 @@ const CreateScreen: React.FC = () => {
       setPostText('');
       setAttachedMedia([]);
       setUploadProgress({});
+      setPoll(null);
 
-      Alert.alert(
-        '¡Publicado!',
-        'Tu post ha sido publicado exitosamente',
-        [
-          {
-            text: 'Ver en Feed',
-            onPress: () => {
-              navigation.goBack(); // Cerrar el modal
-            }
-          },
-          { text: 'Crear otro', style: 'default' },
-        ]
-      );
+      // Navegar inmediatamente al home
+      navigation.goBack();
 
     } catch (error) {
       console.error('Error publishing post:', error);
@@ -333,43 +359,16 @@ const CreateScreen: React.FC = () => {
       <TextInput
         style={[styles.textInput, {
           color: theme.colors.text,
-          borderColor: isTextOverLimit ? theme.colors.error : theme.colors.border,
         }]}
-        placeholder="¿Qué quieres compartir de forma anónima?"
+        placeholder="¿Qué está pasando?"
         placeholderTextColor={theme.colors.textSecondary}
         value={postText}
         onChangeText={setPostText}
         multiline
         maxLength={maxTextLength + 50} // Permitir exceso para mostrar error
         textAlignVertical="top"
-        autoFocus={false}
+        autoFocus={true}
       />
-      
-      {/* Contador de caracteres */}
-      <View style={styles.textCounter}>
-        <Text style={[
-          styles.counterText,
-          { 
-            color: isTextOverLimit ? theme.colors.error : theme.colors.textSecondary,
-            fontWeight: isTextOverLimit ? 'bold' : 'normal',
-          }
-        ]}>
-          {postText.length}/{maxTextLength}
-        </Text>
-        
-        {/* Indicador circular de progreso */}
-        <View style={[styles.progressCircle, { borderColor: theme.colors.border }]}>
-          <View
-            style={[
-              styles.progressFill,
-              {
-                backgroundColor: isTextOverLimit ? theme.colors.error : theme.colors.accent,
-                transform: [{ rotate: `${Math.min(textProgress * 360, 360)}deg` }],
-              },
-            ]}
-          />
-        </View>
-      </View>
     </View>
   );
 
@@ -378,12 +377,6 @@ const CreateScreen: React.FC = () => {
 
     return (
       <View style={styles.mediaPreviewSection}>
-        <View style={styles.mediaHeader}>
-          <Text style={[styles.mediaSectionTitle, { color: theme.colors.text }]}>
-            Media adjunta ({attachedMedia.length}/{maxImages})
-          </Text>
-        </View>
-
         <View style={styles.mediaGrid}>
           {attachedMedia.map((media, index) => (
             <View key={media.id} style={[
@@ -408,11 +401,11 @@ const CreateScreen: React.FC = () => {
 
               {/* Botón de eliminar */}
               <TouchableOpacity
-                style={[styles.removeMediaButton, { backgroundColor: theme.colors.error }]}
+                style={[styles.removeMediaButton, { backgroundColor: 'rgba(0,0,0,0.75)' }]}
                 onPress={() => removeMedia(media.id)}
                 activeOpacity={0.8}
               >
-                <Ionicons name="close" size={scale(16)} color="white" />
+                <Ionicons name="close" size={scale(18)} color="white" />
               </TouchableOpacity>
             </View>
           ))}
@@ -421,97 +414,382 @@ const CreateScreen: React.FC = () => {
     );
   };
 
-  const renderMediaActions = () => (
-    <View style={styles.mediaActionsSection}>
-      <TouchableOpacity
-        style={[styles.mediaActionButton, {
-          backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.border,
-          opacity: attachedMedia.length >= maxImages ? 0.5 : 1,
-        }]}
-        onPress={handleAttachMedia}
-        disabled={attachedMedia.length >= maxImages}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="camera" size={ICON_SIZE.lg} color={theme.colors.accent} />
-        <Text style={[styles.mediaActionText, { color: theme.colors.text }]}>
-          Agregar Imágenes
-        </Text>
-        <Text style={[styles.mediaActionSubtext, { color: theme.colors.textSecondary }]}>
-          Hasta {maxImages} imágenes desde cámara o galería
-        </Text>
-      </TouchableOpacity>
+  const renderPoll = () => {
+    if (!poll) return null;
+
+    const pollDurations = [
+      { label: '1 día', value: 24 },
+      { label: '3 días', value: 72 },
+      { label: '7 días', value: 168 },
+    ];
+
+    return (
+      <View style={[styles.pollSection, {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.border,
+      }]}>
+        {/* Header de encuesta */}
+        <View style={styles.pollHeader}>
+          <View style={styles.pollHeaderLeft}>
+            <Ionicons name="bar-chart" size={scale(18)} color={theme.colors.accent} />
+            <Text style={[styles.pollTitle, { color: theme.colors.text }]}>Encuesta</Text>
+          </View>
+          <TouchableOpacity onPress={handlePollPress} style={styles.removePollButton}>
+            <Ionicons name="close" size={scale(18)} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Opciones de encuesta */}
+        {poll.options.map((option, index) => (
+          <View key={option.id} style={styles.pollOptionContainer}>
+            <TextInput
+              style={[styles.pollOptionInput, {
+                backgroundColor: theme.colors.background,
+                borderColor: theme.colors.border,
+                color: theme.colors.text,
+              }]}
+              placeholder={`Opción ${index + 1}`}
+              placeholderTextColor={theme.colors.textSecondary}
+              value={option.text}
+              onChangeText={(text) => handlePollOptionChange(option.id, text)}
+              maxLength={25}
+            />
+            {poll.options.length > minPollOptions && (
+              <TouchableOpacity
+                onPress={() => handleRemovePollOption(option.id)}
+                style={styles.removePollOptionButton}
+              >
+                <Ionicons name="close-circle" size={scale(20)} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
+
+        {/* Botón para agregar opción */}
+        {poll.options.length < maxPollOptions && (
+          <TouchableOpacity
+            style={[styles.addPollOptionButton, { borderColor: theme.colors.border }]}
+            onPress={handleAddPollOption}
+          >
+            <Ionicons name="add" size={scale(18)} color={theme.colors.accent} />
+            <Text style={[styles.addPollOptionText, { color: theme.colors.accent }]}>
+              Agregar opción
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Selector de duración */}
+        <View style={styles.pollDurationContainer}>
+          <Text style={[styles.pollDurationLabel, { color: theme.colors.textSecondary }]}>
+            Duración de la encuesta
+          </Text>
+          <View style={styles.pollDurationButtons}>
+            {pollDurations.map((duration) => (
+              <TouchableOpacity
+                key={duration.value}
+                style={[
+                  styles.pollDurationButton,
+                  {
+                    backgroundColor: poll.duration === duration.value ? theme.colors.accent : theme.colors.background,
+                    borderColor: poll.duration === duration.value ? theme.colors.accent : theme.colors.border,
+                  }
+                ]}
+                onPress={() => handlePollDurationChange(duration.value)}
+              >
+                <Text style={[
+                  styles.pollDurationButtonText,
+                  {
+                    color: poll.duration === duration.value ? 'white' : theme.colors.text,
+                  }
+                ]}>
+                  {duration.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const handlePollPress = () => {
+    if (poll) {
+      // Si ya hay una encuesta, removerla
+      setPoll(null);
+    } else {
+      // Si hay imágenes, no permitir crear encuesta
+      if (attachedMedia.length > 0) {
+        Alert.alert('No disponible', 'No puedes agregar una encuesta si ya tienes imágenes adjuntas');
+        return;
+      }
+      // Crear nueva encuesta con 2 opciones vacías
+      setPoll({
+        options: [
+          { id: '1', text: '' },
+          { id: '2', text: '' },
+        ],
+        duration: 24, // 1 día por defecto
+      });
+    }
+  };
+
+  const handleAddPollOption = () => {
+    if (!poll || poll.options.length >= maxPollOptions) return;
+
+    setPoll({
+      ...poll,
+      options: [
+        ...poll.options,
+        { id: Date.now().toString(), text: '' }
+      ]
+    });
+  };
+
+  const handleRemovePollOption = (optionId: string) => {
+    if (!poll || poll.options.length <= minPollOptions) return;
+
+    setPoll({
+      ...poll,
+      options: poll.options.filter(opt => opt.id !== optionId)
+    });
+  };
+
+  const handlePollOptionChange = (optionId: string, text: string) => {
+    if (!poll) return;
+
+    setPoll({
+      ...poll,
+      options: poll.options.map(opt =>
+        opt.id === optionId ? { ...opt, text } : opt
+      )
+    });
+  };
+
+  const handlePollDurationChange = (duration: number) => {
+    if (!poll) return;
+
+    setPoll({
+      ...poll,
+      duration
+    });
+  };
+
+  const renderToolbar = () => (
+    <View style={styles.toolbar}>
+      <View style={styles.toolbarLeft}>
+        {/* Botón de galería */}
+        <TouchableOpacity
+          style={styles.toolbarButton}
+          onPress={pickImageFromGallery}
+          disabled={attachedMedia.length >= maxImages || poll !== null}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="image-outline"
+            size={scale(22)}
+            color={(attachedMedia.length >= maxImages || poll !== null) ? theme.colors.textSecondary : theme.colors.accent}
+          />
+        </TouchableOpacity>
+
+        {/* Botón de cámara - solo en mobile */}
+        {Platform.OS !== 'web' && (
+          <TouchableOpacity
+            style={styles.toolbarButton}
+            onPress={takePhoto}
+            disabled={attachedMedia.length >= maxImages || poll !== null}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="camera-outline"
+              size={scale(22)}
+              color={(attachedMedia.length >= maxImages || poll !== null) ? theme.colors.textSecondary : theme.colors.accent}
+            />
+          </TouchableOpacity>
+        )}
+
+        {/* Botón de encuesta */}
+        <TouchableOpacity
+          style={styles.toolbarButton}
+          onPress={handlePollPress}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="bar-chart-outline"
+            size={scale(22)}
+            color={poll ? theme.colors.accent : theme.colors.accent}
+            style={poll ? { opacity: 1 } : {}}
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Contador de caracteres - solo visible después del 75% */}
+      {textProgress >= 0.75 && (
+        <View style={styles.toolbarRight}>
+          <Text style={[
+            styles.counterText,
+            {
+              color: isTextOverLimit ? theme.colors.error : theme.colors.textSecondary,
+              fontWeight: isTextOverLimit ? 'bold' : 'normal',
+            }
+          ]}>
+            {postText.length > maxTextLength ? `-${postText.length - maxTextLength}` : `${maxTextLength - postText.length}`}
+          </Text>
+
+          {/* Indicador circular de progreso */}
+          <View style={[styles.progressCircle, { borderColor: theme.colors.border }]}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  backgroundColor: isTextOverLimit ? theme.colors.error : theme.colors.accent,
+                  transform: [{ rotate: `${Math.min(textProgress * 360, 360)}deg` }],
+                },
+              ]}
+            />
+          </View>
+        </View>
+      )}
     </View>
   );
 
-  const renderPublishSection = () => (
-    <View style={styles.publishSection}>
-      <TouchableOpacity
-        style={[styles.publishButton, { 
-          backgroundColor: canPublish ? theme.colors.accent : theme.colors.surface,
-          opacity: canPublish ? 1 : 0.5,
-        }]}
-        onPress={handlePublish}
-        disabled={!canPublish}
-        activeOpacity={0.8}
-      >
-        {isPublishing ? (
-          <>
-            <ActivityIndicator size="small" color="white" />
-            <Text style={styles.publishButtonText}>Publicando...</Text>
-          </>
-        ) : (
-          <>
-            <Ionicons name="send" size={ICON_SIZE.md} color="white" />
-            <Text style={styles.publishButtonText}>Publicar</Text>
-          </>
-        )}
-      </TouchableOpacity>
-    </View>
-  );
 
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
-      edges={['top']}
+      edges={['top', 'bottom']}
     >
+      {/* Header estilo X.com - pantalla completa */}
+      <View style={[styles.header, {
+        backgroundColor: theme.colors.background,
+        borderBottomColor: theme.colors.border,
+      }]}>
+        <TouchableOpacity
+          onPress={handleClose}
+          activeOpacity={0.7}
+          style={styles.cancelButton}
+        >
+          <Text style={[styles.cancelText, { color: theme.colors.text }]}>Cancelar</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.postButton, {
+            backgroundColor: canPublish ? theme.colors.accent : theme.colors.surface,
+            opacity: canPublish ? 1 : 0.5,
+          }]}
+          onPress={handlePublish}
+          disabled={!canPublish}
+          activeOpacity={0.8}
+        >
+          {isPublishing ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <Text style={styles.postButtonText}>Postear</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* Community Selector */}
+      <View style={[styles.communitySelector, { borderBottomColor: theme.colors.border }]}>
+        <Text style={[styles.communitySelectorLabel, { color: theme.colors.textSecondary }]}>
+          Publicar en:
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.communityChipsContainer}
+        >
+          {getAvailableCommunities().map((community) => (
+            <TouchableOpacity
+              key={community.id}
+              style={[
+                styles.communityChip,
+                {
+                  backgroundColor: selectedCommunity?.id === community.id
+                    ? `${theme.colors.accent}15`
+                    : theme.colors.surface,
+                  borderColor: selectedCommunity?.id === community.id
+                    ? theme.colors.accent
+                    : theme.colors.border,
+                },
+              ]}
+              onPress={() => setSelectedCommunity(community)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={community.icon as any}
+                size={scale(14)}
+                color={selectedCommunity?.id === community.id ? theme.colors.accent : theme.colors.text}
+              />
+              <Text
+                style={[
+                  styles.communityChipText,
+                  {
+                    color: selectedCommunity?.id === community.id
+                      ? theme.colors.accent
+                      : theme.colors.text,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {community.name}
+              </Text>
+              {selectedCommunity?.id === community.id && (
+                <Ionicons name="checkmark-circle" size={scale(14)} color={theme.colors.accent} />
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        behavior="padding"
+        keyboardVerticalOffset={0}
       >
         <ScrollView
-        style={styles.content}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }
-        ]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Barra superior con botón de cerrar */}
-        <View style={[styles.modalHeader, {
-          backgroundColor: theme.colors.background,
-          borderBottomColor: theme.colors.border,
-        }]}>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={handleClose}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="close" size={scale(28)} color={theme.colors.text} />
-          </TouchableOpacity>
-          <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
-            Crear Post
-          </Text>
-          <View style={styles.placeholder} />
-        </View>
+          style={styles.content}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Área de composición con avatar */}
+          <View style={styles.compositionArea}>
+            {/* Avatar del usuario */}
+            <View style={styles.avatarContainer}>
+              <AvatarDisplay
+                size={scale(32)}
+                avatarType={userProfile?.avatarType || 'predefined'}
+                avatarId={userProfile?.avatarId || 'male'}
+                photoURL={typeof userProfile?.photoURL === 'string' ? userProfile.photoURL : undefined}
+                photoURLThumbnail={typeof userProfile?.photoURLThumbnail === 'string' ? userProfile.photoURLThumbnail : undefined}
+              />
+            </View>
 
-        {renderTextInput()}
-        {renderMediaPreview()}
-        {renderMediaActions()}
-        {renderPublishSection()}
+            {/* Área de texto e imágenes */}
+            <View style={styles.inputArea}>
+              {renderTextInput()}
+              {renderMediaPreview()}
+              {renderPoll()}
+            </View>
+          </View>
         </ScrollView>
+
+        {/* Toolbar fija que sigue al teclado */}
+        <View style={[
+          styles.toolbarContainer,
+          {
+            backgroundColor: theme.colors.background,
+            borderTopColor: theme.colors.border,
+            maxWidth: contentMaxWidth,
+            alignSelf: 'center',
+            width: '100%',
+          }
+        ]}>
+          {renderToolbar()}
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -525,9 +803,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.md,
   },
-  modalHeader: {
+  // Header estilo X.com - pantalla completa
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -535,73 +816,88 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderBottomWidth: scale(0.5),
   },
-  closeButton: {
-    padding: SPACING.xs,
+  cancelButton: {
+    paddingVertical: SPACING.xs,
   },
-  modalTitle: {
-    fontSize: FONT_SIZE.lg,
+  cancelText: {
+    fontSize: FONT_SIZE.base,
+  },
+  postButton: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: scale(8),
+    borderRadius: BORDER_RADIUS.full,
+    minWidth: scale(70),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  postButtonText: {
+    color: 'white',
+    fontSize: FONT_SIZE.sm,
     fontWeight: FONT_WEIGHT.bold,
   },
-  placeholder: {
-    width: scale(28),
+  // Community selector
+  communitySelector: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: scale(0.5),
   },
-  textInputSection: {
-    marginBottom: SPACING.xxl,
+  communitySelectorLabel: {
+    fontSize: FONT_SIZE.xs,
+    marginBottom: SPACING.xs,
   },
-  textInput: {
-    minHeight: scale(120),
-    borderWidth: scale(1),
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.lg,
-    fontSize: FONT_SIZE.md,
-    lineHeight: scale(24),
+  communityChipsContainer: {
+    gap: SPACING.sm,
+    paddingVertical: SPACING.xs,
   },
-  textCounter: {
+  communityChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: SPACING.sm,
-    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.full,
+    borderWidth: 1,
+    gap: SPACING.xs,
   },
-  counterText: {
+  communityChipText: {
     fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
   },
-  progressCircle: {
-    width: scale(24),
-    height: scale(24),
-    borderRadius: scale(12),
-    borderWidth: scale(2),
-    position: 'relative',
-    overflow: 'hidden',
+  // Área de composición
+  compositionArea: {
+    flexDirection: 'row',
+    gap: SPACING.md,
   },
-  progressFill: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '50%',
-    height: '100%',
-    transformOrigin: 'right center',
+  avatarContainer: {
+    paddingTop: scale(2),
   },
+  inputArea: {
+    flex: 1,
+  },
+  textInputSection: {
+    marginBottom: 0,
+  },
+  textInput: {
+    minHeight: scale(32),
+    fontSize: FONT_SIZE.lg,
+    lineHeight: scale(24),
+    paddingVertical: 0,
+  },
+  // Media preview inline
   mediaPreviewSection: {
-    marginBottom: SPACING.xxl,
-  },
-  mediaHeader: {
-    marginBottom: SPACING.md,
-  },
-  mediaSectionTitle: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: FONT_WEIGHT.semibold,
+    marginTop: SPACING.sm,
   },
   mediaGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.md,
+    gap: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
   },
   mediaPreviewItem: {
     position: 'relative',
-    width: scale(140),
-    height: scale(140),
-    borderRadius: BORDER_RADIUS.md,
+    width: '100%',
+    height: scale(280),
+    borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
     borderWidth: scale(1),
   },
@@ -619,52 +915,134 @@ const styles = StyleSheet.create({
   },
   removeMediaButton: {
     position: 'absolute',
-    top: SPACING.sm,
-    right: SPACING.sm,
+    top: SPACING.md,
+    right: SPACING.md,
     borderRadius: BORDER_RADIUS.full,
-    padding: scale(6),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: scale(2) },
-    shadowOpacity: 0.3,
-    shadowRadius: scale(4),
-    elevation: 3,
+    padding: scale(8),
   },
-  mediaActionsSection: {
-    marginBottom: SPACING.xxl,
+  // Toolbar container que sigue al teclado
+  toolbarContainer: {
+    borderTopWidth: scale(0.5),
+    paddingHorizontal: SPACING.lg,
   },
-  mediaActionButton: {
-    flexDirection: 'column',
+  // Toolbar estilo X.com
+  toolbar: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: SPACING.xl,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: scale(2),
-    borderStyle: 'dashed',
+    justifyContent: 'space-between',
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.md,
   },
-  mediaActionText: {
+  toolbarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  toolbarButton: {
+    padding: SPACING.sm,
+  },
+  toolbarRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  counterText: {
+    fontSize: FONT_SIZE.xs,
+  },
+  progressCircle: {
+    width: scale(20),
+    height: scale(20),
+    borderRadius: scale(10),
+    borderWidth: scale(2),
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '50%',
+    height: '100%',
+    transformOrigin: 'right center',
+  },
+  // Poll styles
+  pollSection: {
+    marginTop: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: scale(1),
+    padding: SPACING.lg,
+  },
+  pollHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
+  },
+  pollHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  pollTitle: {
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.semibold,
-    marginTop: SPACING.sm,
   },
-  mediaActionSubtext: {
-    fontSize: FONT_SIZE.xs,
-    marginTop: scale(4),
+  removePollButton: {
+    padding: SPACING.xs,
   },
-  publishSection: {
-    marginBottom: SPACING.xxxl,
+  pollOptionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
   },
-  publishButton: {
+  pollOptionInput: {
+    flex: 1,
+    borderWidth: scale(1),
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    fontSize: FONT_SIZE.base,
+  },
+  removePollOptionButton: {
+    padding: SPACING.xs,
+  },
+  addPollOptionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderWidth: scale(1),
     borderRadius: BORDER_RADIUS.md,
-    gap: SPACING.sm,
-    marginBottom: SPACING.xxl,
+    borderStyle: 'dashed',
+    marginBottom: SPACING.md,
+    gap: SPACING.xs,
   },
-  publishButtonText: {
-    color: 'white',
-    fontSize: FONT_SIZE.md,
-    fontWeight: FONT_WEIGHT.bold,
+  addPollOptionText: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  pollDurationContainer: {
+    marginTop: SPACING.sm,
+  },
+  pollDurationLabel: {
+    fontSize: FONT_SIZE.sm,
+    marginBottom: SPACING.sm,
+  },
+  pollDurationButtons: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  pollDurationButton: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: scale(1),
+    alignItems: 'center',
+  },
+  pollDurationButtonText: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
   },
 });
 

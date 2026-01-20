@@ -53,10 +53,6 @@ const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navigation }
     };
   }, []);
 
-  const handleLike = (postId: string) => {
-    console.log('Like post:', postId);
-  };
-
   const handleComment = (postId: string) => {
     console.log('Comment on post:', postId);
     textInputRef.current?.focus();
@@ -155,7 +151,6 @@ const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navigation }
         <View style={styles.postContainer}>
           <PostCard
             post={post}
-            onLike={handleLike}
             onComment={handleComment}
             onPrivateMessage={handlePrivateMessage}
             onPress={handlePostPress}

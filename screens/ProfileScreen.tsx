@@ -1,21 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
-  Dimensions,
   FlatList,
-  Alert,
-  Share,
   Modal,
   TextInput,
   Keyboard,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -24,19 +23,18 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { uploadProfileImageFromUri } from '../services/storageService';
-import { postsService, Post } from '../services/firestoreService';
+import { postsService, Post, repostsService } from '../services/firestoreService';
+import { likesService } from '../services/likesService';
 import { formatNumber } from '../data/mockData';
 import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import Header from '../components/Header';
-import ResponsiveLayout from '../components/ResponsiveLayout';
 import AvatarPicker from '../components/avatars/AvatarPicker';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
+import PostCard from '../components/PostCard';
+import ImageViewer from '../components/ImageViewer';
 import { useResponsive } from '../hooks/useResponsive';
 
 type ProfileScreenNavigationProp = StackNavigationProp<ProfileStackParamList, 'ProfileMain'>;
-
-const { width: screenWidth } = Dimensions.get('window');
-const gridItemSize = (screenWidth - 48) / 3; // 3 columnas con espaciado
 
 const ProfileScreen: React.FC = () => {
   const { theme } = useTheme();
@@ -48,12 +46,20 @@ const ProfileScreen: React.FC = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [tempDisplayName, setTempDisplayName] = useState('');
   const [tempBio, setTempBio] = useState('');
+  const [tempWebsite, setTempWebsite] = useState('');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [updating, setUpdating] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
+  const [userReposts, setUserReposts] = useState<Post[]>([]);
+  const [userLikedPosts, setUserLikedPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [postsError, setPostsError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'posts' | 'reposts' | 'photos' | 'polls' | 'likes'>('posts');
+  const [showAvatarViewer, setShowAvatarViewer] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const currentScrollPosition = useRef(0);
 
   useEffect(() => {
     const keyboardWillShowListener = Keyboard.addListener(
@@ -76,6 +82,7 @@ const ProfileScreen: React.FC = () => {
     if (userProfile) {
       setTempDisplayName(userProfile.displayName);
       setTempBio(userProfile.bio || '');
+      setTempWebsite(userProfile.website || '');
     }
   }, [userProfile]);
 
@@ -83,17 +90,27 @@ const ProfileScreen: React.FC = () => {
   useEffect(() => {
     const loadUserPosts = async () => {
       if (!user) return;
-      
+
       try {
         setLoadingPosts(true);
         setPostsError(null);
         console.log('🔍 Cargando posts del usuario:', user.uid);
-        
-        const posts = await postsService.getByUserId(user.uid);
+
+        // Cargar posts, reposts y liked posts en paralelo
+        const [posts, reposts, likedPosts] = await Promise.all([
+          postsService.getByUserId(user.uid),
+          repostsService.getUserReposts(user.uid),
+          likesService.getUserLikedPostsWithData(user.uid)
+        ]);
+
         console.log('📋 Posts encontrados:', posts.length);
-        
+        console.log('🔄 Reposts encontrados:', reposts.length);
+        console.log('❤️ Liked posts encontrados:', likedPosts.length);
+
         setUserPosts(posts);
-        
+        setUserReposts(reposts);
+        setUserLikedPosts(likedPosts);
+
         // Actualizar contador de posts en el perfil si es diferente
         if (userProfile && userProfile.posts !== posts.length) {
           await updateProfile({ posts: posts.length });
@@ -109,20 +126,54 @@ const ProfileScreen: React.FC = () => {
     loadUserPosts();
   }, [user, userProfile?.id]); // Recargar cuando cambie el usuario o se cree el perfil
 
+  // Scroll to top cuando se toca el tab de Profile estando ya en Profile
+  // Si ya está arriba, refrescar la página
+  useEffect(() => {
+    const parentNavigation = navigation.getParent();
+    if (!parentNavigation) return;
+
+    const unsubscribe = parentNavigation.addListener('tabPress', (e: any) => {
+      // Solo hacer scroll si el tab presionado es Profile
+      if (e.target?.includes('Profile')) {
+        // Si ya estamos arriba (menos de 50px), refrescar
+        if (currentScrollPosition.current < 50) {
+          refreshPosts();
+        } else {
+          // Si no, hacer scroll arriba
+          if (scrollViewRef.current) {
+            scrollViewRef.current.scrollTo({ y: 0, animated: true });
+          }
+        }
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
   // Función de navegación para el header
   const handleNotificationsPress = () => {
-    (navigation as any).navigate('Notifications');
+    // TODO: Implementar pantalla de notificaciones
+    console.log('Notificaciones - Próximamente');
   };
 
   // Función para recargar posts (útil después de crear un nuevo post)
   const refreshPosts = async () => {
     if (!user) return;
-    
+
     try {
       setLoadingPosts(true);
-      const posts = await postsService.getByUserId(user.uid);
+
+      // Cargar posts, reposts y liked posts en paralelo
+      const [posts, reposts, likedPosts] = await Promise.all([
+        postsService.getByUserId(user.uid),
+        repostsService.getUserReposts(user.uid),
+        likesService.getUserLikedPostsWithData(user.uid)
+      ]);
+
       setUserPosts(posts);
-      
+      setUserReposts(reposts);
+      setUserLikedPosts(likedPosts);
+
       // Actualizar contador en el perfil
       if (userProfile && userProfile.posts !== posts.length) {
         await updateProfile({ posts: posts.length });
@@ -165,19 +216,10 @@ const ProfileScreen: React.FC = () => {
     );
   }
 
-  const handleShareProfile = async () => {
-    try {
-      await Share.share({
-        message: `¡Sígueme en HideTok! @${userProfile.displayName}\n\n${userProfile.bio || 'Usuario de HideTok'}`,
-      });
-    } catch (error) {
-      console.error('Error sharing profile:', error);
-    }
-  };
-
   const handleEditProfile = () => {
     setTempDisplayName(userProfile.displayName);
     setTempBio(userProfile.bio || '');
+    setTempWebsite(userProfile.website || '');
     setShowEditModal(true);
   };
 
@@ -192,9 +234,10 @@ const ProfileScreen: React.FC = () => {
       await updateProfile({
         displayName: tempDisplayName.trim(),
         bio: tempBio.trim(),
+        website: tempWebsite.trim(),
       });
       setShowEditModal(false);
-      Alert.alert('Perfil actualizado', 'Los cambios se han guardado correctamente');
+      // No mostrar Alert para evitar interferencias con la navegación
     } catch (error) {
       Alert.alert('Error', 'No se pudo actualizar el perfil');
     } finally {
@@ -202,29 +245,17 @@ const ProfileScreen: React.FC = () => {
     }
   };
 
-  const handleSettings = () => {
+  const handleSettingsPress = () => {
     navigation.navigate('Settings');
   };
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Cerrar sesión',
-      '¿Estás seguro de que quieres cerrar sesión?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Cerrar sesión', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await logout();
-            } catch (error) {
-              Alert.alert('Error', 'No se pudo cerrar la sesión');
-            }
-          }
-        },
-      ]
-    );
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Error logging out:', error);
+      Alert.alert('Error', 'No se pudo cerrar sesión');
+    }
   };
 
   // Función para manejar selección de avatar
@@ -233,7 +264,17 @@ const ProfileScreen: React.FC = () => {
     uri?: string;
     avatarId?: string;
   }) => {
-    if (!user || !userProfile?.id) return;
+    console.log('🎭 handleAvatarSelect llamado con:', {
+      type: avatarData.type,
+      uri: avatarData.uri?.substring(0, 50),
+      avatarId: avatarData.avatarId,
+    });
+
+    if (!user || !userProfile?.id) {
+      console.error('❌ No hay usuario o perfil:', { user: !!user, profileId: userProfile?.id });
+      Alert.alert('Error', 'No hay sesión activa');
+      return;
+    }
 
     setUploadingAvatar(true);
     try {
@@ -242,151 +283,301 @@ const ProfileScreen: React.FC = () => {
       };
 
       if (avatarData.type === 'predefined') {
+        console.log('📝 Seleccionado avatar predefinido:', avatarData.avatarId);
         updateData.avatarId = avatarData.avatarId;
         // Limpiar photoURL si cambiamos a predefinido
         updateData.photoURL = null;
+        updateData.photoURLThumbnail = null;
       } else if (avatarData.type === 'custom' && avatarData.uri) {
-        // Subir la imagen a Firebase Storage
-        const downloadURL = await uploadProfileImageFromUri(avatarData.uri, user.uid);
-        updateData.photoURL = downloadURL;
+        console.log('📤 Subiendo imagen personalizada...');
+        console.log('📍 URI:', avatarData.uri);
+
+        // Subir la imagen a Firebase Storage (ahora retorna fullSize y thumbnail)
+        const { fullSize, thumbnail } = await uploadProfileImageFromUri(avatarData.uri, user.uid);
+
+        console.log('✅ Imagen subida exitosamente');
+        console.log('📎 Full size URL:', fullSize?.substring(0, 50));
+        console.log('📎 Thumbnail URL:', thumbnail?.substring(0, 50));
+
+        if (!fullSize) {
+          throw new Error('No se recibió URL de imagen');
+        }
+
+        updateData.photoURL = fullSize;
+        updateData.photoURLThumbnail = thumbnail;
         updateData.avatarId = null;
       }
 
+      console.log('💾 Guardando en perfil:', Object.keys(updateData));
       await updateProfile(updateData);
-      console.log('🎭 Avatar actualizado en perfil:', updateData);
-      Alert.alert('Avatar actualizado', 'Tu avatar se ha cambiado correctamente');
-    } catch (error) {
-      console.error('Error updating avatar:', error);
-      Alert.alert('Error', 'No se pudo actualizar el avatar');
+      console.log('✅ Avatar actualizado exitosamente');
+      // No mostrar Alert para evitar interferencias
+    } catch (error: any) {
+      console.error('❌ Error updating avatar:', error);
+      console.error('❌ Error message:', error?.message);
+      console.error('❌ Error stack:', error?.stack);
+      Alert.alert('Error', `No se pudo actualizar el avatar: ${error?.message || 'Error desconocido'}`);
     } finally {
       setUploadingAvatar(false);
     }
   };
 
-  const renderPost = ({ item, index }: { item: Post; index: number }) => (
-    <TouchableOpacity
-      style={[styles.gridItem, { backgroundColor: theme.colors.surface }]}
-      onPress={() => console.log('Open post:', item.id)}
-      activeOpacity={0.8}
-    >
-      {item.imageUrls && item.imageUrls.length > 0 ? (
-        <Image
-          source={{ uri: item.imageUrls[0] }}
-          style={styles.gridImage}
-          resizeMode="cover"
-        />
-      ) : (
-        <View style={[styles.gridPlaceholder, { backgroundColor: theme.colors.border }]}>
-          <Text style={[styles.gridText, { color: theme.colors.textSecondary }]} numberOfLines={3}>
-            {item.content}
-          </Text>
-        </View>
-      )}
-      
-      {/* Indicadores */}
-      <View style={styles.gridOverlay}>
-        {item.imageUrls && item.imageUrls.length > 1 && (
-          <View style={styles.mediaIndicator}>
-            <Ionicons name="copy" size={12} color="white" />
-          </View>
-        )}
-        {/* Video indicator removido por ahora ya que solo manejamos imágenes */}
-      </View>
+  // Función para cambiar la foto de portada
+  const handleChangeCoverPhoto = async () => {
+    if (!user || !userProfile?.id) return;
 
-      {/* Stats en la esquina */}
-      <View style={styles.gridStats}>
-        <View style={styles.gridStat}>
-          <Ionicons name="heart" size={12} color="white" />
-          <Text style={styles.gridStatText}>{formatNumber(item.likes)}</Text>
-        </View>
-      </View>
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permiso requerido', 'Necesitamos acceso a tu galería para cambiar la foto de portada');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setUploadingCover(true);
+        const { fullSize } = await uploadProfileImageFromUri(result.assets[0].uri, user.uid, 'cover');
+
+        await updateProfile({
+          coverPhotoURL: fullSize,
+        });
+
+        // No mostrar Alert para evitar interferencias
+      }
+    } catch (error) {
+      console.error('Error updating cover photo:', error);
+      Alert.alert('Error', 'No se pudo actualizar la foto de portada');
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
+  const handleComment = (postId: string) => {
+    const post = userPosts.find(p => p.id === postId);
+    if (post) {
+      (navigation as any).navigate('PostDetail', { post });
+    }
+  };
+
+  const handlePrivateMessage = (userId: string, userData?: { displayName: string; avatarType?: string; avatarId?: string; photoURL?: string; photoURLThumbnail?: string }) => {
+    if (!user || user.uid === userId) return; // No enviar mensaje a sí mismo
+
+    // Navegar a la pantalla de conversación
+    (navigation as any).navigate('Inbox', {
+      screen: 'Conversation',
+      params: {
+        otherUserId: userId,
+        otherUserData: userData,
+      },
+    });
+  };
+
+  const handlePostPress = (post: Post) => {
+    // Navegar al detalle del post
+    (navigation as any).navigate('PostDetail', { post });
+  };
+
+  // Abrir visor de foto de perfil
+  const handleAvatarLongPress = () => {
+    // Solo abrir si hay una foto personalizada
+    if (userProfile?.avatarType === 'custom' && userProfile?.photoURL) {
+      setShowAvatarViewer(true);
+    }
+  };
+
+  // Función para filtrar posts según la pestaña activa
+  const getFilteredPosts = () => {
+    switch (activeTab) {
+      case 'posts':
+        return userPosts;
+      case 'reposts':
+        return userReposts;
+      case 'photos':
+        return userPosts.filter(post => post.imageUrls && post.imageUrls.length > 0);
+      case 'polls':
+        return userPosts.filter(post => post.poll);
+      case 'likes':
+        return userLikedPosts;
+      default:
+        return userPosts;
+    }
+  };
+
+  const renderTabButton = (
+    tab: 'posts' | 'reposts' | 'photos' | 'polls' | 'likes',
+    icon: string,
+    label: string
+  ) => (
+    <TouchableOpacity
+      style={[
+        styles.tabButton,
+        activeTab === tab && { borderBottomColor: theme.colors.accent, borderBottomWidth: 2 }
+      ]}
+      onPress={() => setActiveTab(tab)}
+      activeOpacity={0.7}
+    >
+      <Ionicons
+        name={icon as any}
+        size={20}
+        color={activeTab === tab ? theme.colors.accent : theme.colors.textSecondary}
+      />
+      <Text
+        style={[
+          styles.tabLabel,
+          {
+            color: activeTab === tab ? theme.colors.accent : theme.colors.textSecondary,
+            fontWeight: activeTab === tab ? '600' : '400',
+          }
+        ]}
+      >
+        {label}
+      </Text>
     </TouchableOpacity>
+  );
+
+  const renderPost = ({ item }: { item: Post }) => (
+    <View style={styles.postContainer}>
+      <PostCard
+        post={item}
+        onComment={handleComment}
+        onPrivateMessage={handlePrivateMessage}
+        onPress={handlePostPress}
+      />
+    </View>
   );
 
   const renderEditModal = () => (
     <Modal
       visible={showEditModal}
-      transparent
       animationType="slide"
       onRequestClose={() => setShowEditModal(false)}
+      presentationStyle="fullScreen"
     >
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { 
-          backgroundColor: theme.colors.card,
-          transform: [{ translateY: keyboardHeight > 0 ? -keyboardHeight / 2 : 0 }],
+      <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}>
+        {/* Header */}
+        <View style={[styles.modalHeader, {
+          backgroundColor: theme.colors.background,
+          borderBottomColor: theme.colors.border,
+          paddingTop: insets.top + 8,
         }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
-            <TouchableOpacity onPress={() => setShowEditModal(false)}>
-              <Text style={[styles.modalCancel, { color: theme.colors.textSecondary }]}>
-                Cancelar
+          <TouchableOpacity
+            onPress={() => setShowEditModal(false)}
+            style={styles.modalHeaderButton}
+          >
+            <Ionicons name="close" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
+            Editar Perfil
+          </Text>
+          <TouchableOpacity
+            onPress={handleSaveProfile}
+            disabled={updating}
+            style={styles.modalHeaderButton}
+          >
+            {updating ? (
+              <ActivityIndicator size="small" color={theme.colors.accent} />
+            ) : (
+              <Text style={[styles.modalSave, { color: theme.colors.accent }]}>
+                Guardar
               </Text>
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
-              Editar Perfil
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Content */}
+        <ScrollView
+          style={styles.modalBody}
+          contentContainerStyle={styles.modalBodyContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
+              Nombre de usuario
             </Text>
-            <TouchableOpacity onPress={handleSaveProfile} disabled={updating}>
-              {updating ? (
-                <ActivityIndicator size="small" color={theme.colors.accent} />
-              ) : (
-                <Text style={[styles.modalSave, { color: theme.colors.accent }]}>
-                  Guardar
-                </Text>
-              )}
-            </TouchableOpacity>
+            <TextInput
+              style={[styles.input, {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                color: theme.colors.text,
+              }]}
+              value={tempDisplayName}
+              onChangeText={setTempDisplayName}
+              placeholder="Tu nombre de usuario"
+              placeholderTextColor={theme.colors.textSecondary}
+              maxLength={30}
+            />
+            <Text style={[styles.inputHint, { color: theme.colors.textSecondary }]}>
+              {tempDisplayName.length}/30 caracteres
+            </Text>
           </View>
 
-          <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
-                Nombre de usuario
-              </Text>
-              <TextInput
-                style={[styles.input, { 
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  color: theme.colors.text,
-                }]}
-                value={tempDisplayName}
-                onChangeText={setTempDisplayName}
-                placeholder="Tu nombre de usuario"
-                placeholderTextColor={theme.colors.textSecondary}
-                maxLength={30}
-              />
-              <Text style={[styles.inputHint, { color: theme.colors.textSecondary }]}>
-                {tempDisplayName.length}/30 caracteres
-              </Text>
-            </View>
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
+              Biografía
+            </Text>
+            <TextInput
+              style={[styles.input, styles.bioInput, {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                color: theme.colors.text,
+              }]}
+              value={tempBio}
+              onChangeText={setTempBio}
+              placeholder="Cuéntanos sobre ti..."
+              placeholderTextColor={theme.colors.textSecondary}
+              multiline
+              maxLength={100}
+            />
+            <Text style={[styles.inputHint, { color: theme.colors.textSecondary }]}>
+              {tempBio.length}/100 caracteres
+            </Text>
+          </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
-                Biografía
-              </Text>
-              <TextInput
-                style={[styles.input, styles.bioInput, { 
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  color: theme.colors.text,
-                }]}
-                value={tempBio}
-                onChangeText={setTempBio}
-                placeholder="Cuéntanos sobre ti..."
-                placeholderTextColor={theme.colors.textSecondary}
-                multiline
-                maxLength={100}
-              />
-              <Text style={[styles.inputHint, { color: theme.colors.textSecondary }]}>
-                {tempBio.length}/100 caracteres
-              </Text>
-            </View>
-          </ScrollView>
-        </View>
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
+              Sitio web
+            </Text>
+            <TextInput
+              style={[styles.input, {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                color: theme.colors.text,
+              }]}
+              value={tempWebsite}
+              onChangeText={setTempWebsite}
+              placeholder="https://tusitio.com"
+              placeholderTextColor={theme.colors.textSecondary}
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={100}
+            />
+            <Text style={[styles.inputHint, { color: theme.colors.textSecondary }]}>
+              {tempWebsite.length}/100 caracteres
+            </Text>
+          </View>
+        </ScrollView>
       </View>
     </Modal>
   );
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollViewRef}
+        showsVerticalScrollIndicator={false}
+        onScroll={(event) => {
+          currentScrollPosition.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
+      >
           {/* Header principal - solo en móvil */}
           {!isDesktop && (
             <Header
@@ -394,53 +585,82 @@ const ProfileScreen: React.FC = () => {
             />
           )}
 
-          {/* Header con acciones del perfil */}
-          <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
-            <View style={styles.headerLeft} />
-            <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-              {userProfile?.displayName || 'Perfil'}
-            </Text>
-            <View style={styles.headerActions}>
-              <TouchableOpacity style={styles.settingsButton} onPress={handleLogout}>
-                <Ionicons name="log-out-outline" size={24} color={theme.colors.text} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.settingsButton} onPress={handleSettings}>
-                <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
-              </TouchableOpacity>
+        {/* Cover Photo / Banner */}
+        <View style={styles.coverPhotoContainer}>
+          {userProfile.coverPhotoURL && typeof userProfile.coverPhotoURL === 'string' ? (
+            <Image
+              source={{ uri: userProfile.coverPhotoURL }}
+              style={styles.coverPhoto}
+              contentFit="cover"
+              priority="high"
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <View style={[styles.coverPhotoPlaceholder, { backgroundColor: theme.colors.surface }]}>
+              <View style={[styles.coverPhotoPattern, { backgroundColor: theme.colors.accent + '20' }]} />
             </View>
-          </View>
+          )}
+
+          {/* Botón para cambiar foto de portada */}
+          <TouchableOpacity
+            style={[styles.changeCoverButton, { backgroundColor: theme.colors.card }]}
+            onPress={handleChangeCoverPhoto}
+            disabled={uploadingCover}
+            activeOpacity={0.7}
+          >
+            {uploadingCover ? (
+              <ActivityIndicator size="small" color={theme.colors.text} />
+            ) : (
+              <Ionicons name="camera" size={16} color={theme.colors.text} />
+            )}
+          </TouchableOpacity>
+        </View>
 
         {/* Información del perfil */}
         <View style={styles.profileInfo}>
           {/* Avatar y botones */}
           <View style={styles.avatarSection}>
-            <View style={styles.avatarContainer}>
-              {uploadingAvatar ? (
-                <View style={[styles.avatarLoadingContainer, { backgroundColor: theme.colors.surface }]}>
-                  <ActivityIndicator size="large" color={theme.colors.accent} />
-                </View>
-              ) : (
-                <AvatarPicker
-                  currentAvatar={userProfile.photoURL}
-                  currentAvatarType={userProfile.avatarType}
-                  currentAvatarId={userProfile.avatarId}
-                  onAvatarSelect={handleAvatarSelect}
-                  size={80}
-                />
-              )}
+            <View style={styles.avatarWrapper}>
+              <TouchableOpacity
+                style={styles.avatarContainer}
+                onLongPress={handleAvatarLongPress}
+                delayLongPress={300}
+                activeOpacity={0.9}
+              >
+                {uploadingAvatar ? (
+                  <View style={[styles.avatarLoadingContainer, { backgroundColor: theme.colors.surface }]}>
+                    <ActivityIndicator size="large" color={theme.colors.accent} />
+                  </View>
+                ) : (
+                  <AvatarPicker
+                    currentAvatar={typeof userProfile.photoURL === 'string' ? userProfile.photoURL : undefined}
+                    currentAvatarType={userProfile.avatarType}
+                    currentAvatarId={userProfile.avatarId}
+                    onAvatarSelect={handleAvatarSelect}
+                    size={80}
+                  />
+                )}
+              </TouchableOpacity>
+              <Text style={[styles.displayName, { color: theme.colors.text }]}>
+                {userProfile.displayName}
+              </Text>
             </View>
             <View style={styles.actionButtons}>
               <TouchableOpacity
-                style={[styles.editButton, { backgroundColor: theme.colors.accent }]}
+                style={[styles.editButton, {
+                  borderColor: theme.colors.border,
+                  backgroundColor: theme.colors.background
+                }]}
                 onPress={handleEditProfile}
               >
-                <Text style={styles.editButtonText}>Editar perfil</Text>
+                <Ionicons name="create-outline" size={16} color={theme.colors.text} />
+                <Text style={[styles.editButtonText, { color: theme.colors.text }]}>Editar</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.shareButton, { borderColor: theme.colors.border }]}
-                onPress={handleShareProfile}
+                onPress={handleSettingsPress}
               >
-                <Ionicons name="share-outline" size={20} color={theme.colors.text} />
+                <Ionicons name="settings-outline" size={16} color={theme.colors.text} />
               </TouchableOpacity>
             </View>
           </View>
@@ -459,12 +679,23 @@ const ProfileScreen: React.FC = () => {
 
           {/* Información adicional */}
           <View style={styles.infoSection}>
-            <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
-              📧 {userProfile.email || 'Sin email'}
-            </Text>
-            <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
-              📅 Miembro desde {userProfile.createdAt.toDate().toLocaleDateString()}
-            </Text>
+            {userProfile.website && (
+              <View style={styles.infoRow}>
+                <Ionicons name="link-outline" size={14} color={theme.colors.textSecondary} />
+                <Text
+                  style={[styles.infoText, { color: theme.colors.accent }]}
+                  numberOfLines={1}
+                >
+                  {userProfile.website}
+                </Text>
+              </View>
+            )}
+            <View style={styles.infoRow}>
+              <Ionicons name="calendar-outline" size={14} color={theme.colors.textSecondary} />
+              <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
+                Miembro desde {userProfile.createdAt.toDate().toLocaleDateString()}
+              </Text>
+            </View>
           </View>
 
           {/* Estadísticas */}
@@ -496,14 +727,17 @@ const ProfileScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Grilla de posts */}
+        {/* Tabs de filtros */}
+        <View style={[styles.tabsContainer, { borderBottomColor: theme.colors.border }]}>
+          {renderTabButton('posts', 'document-text-outline', 'Posts')}
+          {renderTabButton('reposts', 'repeat-outline', 'Repost')}
+          {renderTabButton('photos', 'image-outline', 'Fotos')}
+          {renderTabButton('polls', 'stats-chart-outline', 'Encuestas')}
+          {renderTabButton('likes', 'heart-outline', 'Me gusta')}
+        </View>
+
+        {/* Posts filtrados */}
         <View style={styles.postsSection}>
-          <View style={[styles.postsHeader, { borderBottomColor: theme.colors.border }]}>
-            <Text style={[styles.postsTitle, { color: theme.colors.text }]}>
-              Publicaciones ({userPosts.length})
-            </Text>
-          </View>
-          
           {loadingPosts ? (
             <View style={styles.loadingPosts}>
               <ActivityIndicator size="small" color={theme.colors.accent} />
@@ -542,28 +776,45 @@ const ProfileScreen: React.FC = () => {
                 <Text style={styles.retryButtonText}>Reintentar</Text>
               </TouchableOpacity>
             </View>
-          ) : userPosts.length > 0 ? (
+          ) : getFilteredPosts().length > 0 ? (
             <FlatList
-              data={userPosts}
+              data={getFilteredPosts()}
               renderItem={renderPost}
               keyExtractor={item => item.id || `post-${item.userId}-${Date.now()}`}
-              numColumns={3}
-              columnWrapperStyle={styles.gridRow}
-              contentContainerStyle={styles.gridContainer}
+              contentContainerStyle={styles.postsContainer}
               scrollEnabled={false}
+              showsVerticalScrollIndicator={false}
             />
           ) : (
             <View style={styles.emptyState}>
-              <Ionicons 
-                name="camera-outline" 
-                size={48} 
-                color={theme.colors.textSecondary} 
+              <Ionicons
+                name={
+                  activeTab === 'posts' ? 'document-text-outline' :
+                  activeTab === 'reposts' ? 'repeat-outline' :
+                  activeTab === 'photos' ? 'image-outline' :
+                  activeTab === 'polls' ? 'stats-chart-outline' :
+                  'heart-outline'
+                }
+                size={48}
+                color={theme.colors.textSecondary}
               />
               <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
-                Aún no tienes publicaciones
+                {
+                  activeTab === 'posts' ? 'Aún no tienes publicaciones' :
+                  activeTab === 'reposts' ? 'No has reposteado nada' :
+                  activeTab === 'photos' ? 'No tienes publicaciones con fotos' :
+                  activeTab === 'polls' ? 'No tienes publicaciones con encuestas' :
+                  'No tienes publicaciones que te gusten'
+                }
               </Text>
               <Text style={[styles.emptySubtext, { color: theme.colors.textSecondary }]}>
-                ¡Comparte tu primer post anónimo!
+                {
+                  activeTab === 'posts' ? '¡Comparte tu primer post anónimo!' :
+                  activeTab === 'reposts' ? 'Comparte contenido de otros usuarios' :
+                  activeTab === 'photos' ? 'Crea un post con fotos' :
+                  activeTab === 'polls' ? 'Crea una encuesta' :
+                  'Dale me gusta a las publicaciones que te interesen'
+                }
               </Text>
             </View>
           )}
@@ -572,6 +823,15 @@ const ProfileScreen: React.FC = () => {
 
       {/* Modal de edición */}
       {renderEditModal()}
+
+      {/* Visor de foto de perfil */}
+      {userProfile?.photoURL && (
+        <ImageViewer
+          visible={showAvatarViewer}
+          imageUrls={[userProfile.photoURL]}
+          onClose={() => setShowAvatarViewer(false)}
+        />
+      )}
     </View>
   );
 };
@@ -579,29 +839,6 @@ const ProfileScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
-  },
-  headerLeft: {
-    width: 24,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  settingsButton: {
-    padding: 4,
   },
   centered: {
     justifyContent: 'center',
@@ -634,16 +871,64 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  coverPhotoContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 160,
+  },
+  coverPhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  coverPhotoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  coverPhotoPattern: {
+    position: 'absolute',
+    width: '200%',
+    height: '200%',
+    top: -50,
+    left: -50,
+    transform: [{ rotate: '45deg' }],
+    opacity: 0.3,
+  },
+  changeCoverButton: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
   profileInfo: {
     padding: 16,
+    marginTop: -40,
   },
   avatarSection: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
   },
-  avatarContainer: {
+  avatarWrapper: {
+    alignItems: 'center',
     marginRight: 16,
+  },
+  avatarContainer: {
+    marginBottom: 8,
+  },
+  displayName: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   avatarLoadingContainer: {
     width: 80,
@@ -661,24 +946,27 @@ const styles = StyleSheet.create({
   actionButtons: {
     flex: 1,
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
   editButton: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    flexDirection: 'row',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    gap: 4,
   },
   editButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '500',
   },
   shareButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -698,9 +986,15 @@ const styles = StyleSheet.create({
   infoSection: {
     marginBottom: 20,
   },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
   infoText: {
     fontSize: 12,
-    marginBottom: 4,
+    flex: 1,
   },
   statsSection: {
     flexDirection: 'row',
@@ -717,83 +1011,32 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
   },
-  postsSection: {
+  tabsContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 0.5,
     marginTop: 8,
   },
-  postsHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
-  },
-  postsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  gridContainer: {
-    padding: 8,
-  },
-  gridRow: {
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  gridItem: {
-    width: gridItemSize,
-    height: gridItemSize,
-    borderRadius: 8,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  gridImage: {
-    width: '100%',
-    height: '100%',
-  },
-  gridPlaceholder: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
+  tabButton: {
+    flex: 1,
+    flexDirection: 'column',
     alignItems: 'center',
-    padding: 8,
-  },
-  gridText: {
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  gridOverlay: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingVertical: 12,
     gap: 4,
   },
-  mediaIndicator: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 4,
-    padding: 2,
+  tabLabel: {
+    fontSize: 11,
+    marginTop: 2,
   },
-  videoIndicator: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 4,
-    padding: 2,
+  postsSection: {
+    marginTop: 0,
   },
-  gridStats: {
-    position: 'absolute',
-    bottom: 4,
-    left: 4,
-    right: 4,
+  postsContainer: {
+    paddingTop: 12,
+    paddingBottom: 16,
   },
-  gridStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 4,
-    padding: 4,
-    alignSelf: 'flex-start',
-  },
-  gridStatText: {
-    color: 'white',
-    fontSize: 10,
-    marginLeft: 2,
-    fontWeight: '600',
+  postContainer: {
+    paddingHorizontal: 16,
   },
   emptyState: {
     alignItems: 'center',
@@ -840,37 +1083,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   // Modal styles
-  modalOverlay: {
+  modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingBottom: 12,
     borderBottomWidth: 0.5,
   },
-  modalCancel: {
-    fontSize: 16,
+  modalHeaderButton: {
+    width: 60,
+    alignItems: 'flex-start',
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+    flex: 1,
+    textAlign: 'center',
   },
   modalSave: {
     fontSize: 16,
     fontWeight: '600',
   },
   modalBody: {
+    flex: 1,
+  },
+  modalBodyContent: {
     padding: 16,
+    paddingBottom: 40,
   },
   inputGroup: {
     marginBottom: 24,

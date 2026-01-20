@@ -8,30 +8,31 @@ interface AvatarDisplayProps {
   avatarType?: 'predefined' | 'custom';
   avatarId?: string;
   photoURL?: string;
+  photoURLThumbnail?: string; // Thumbnail para tamaños pequeños (< 60px)
   backgroundColor?: string;
   borderColor?: string;
   showBorder?: boolean;
 }
+
+// Helper para validar si una URL es válida
+const isValidImageUrl = (url: unknown): url is string => {
+  if (typeof url !== 'string' || !url || url.trim() === '') {
+    return false;
+  }
+  // Verificar que sea una URL http/https válida
+  return url.startsWith('http://') || url.startsWith('https://');
+};
 
 const AvatarDisplay: React.FC<AvatarDisplayProps> = ({
   size = 80,
   avatarType = 'predefined',
   avatarId = 'male',
   photoURL,
+  photoURLThumbnail,
   backgroundColor = '#9CA3AF',
   borderColor = 'transparent',
   showBorder = false,
 }) => {
-  // Debug logging
-  React.useEffect(() => {
-    console.log('🔸 AvatarDisplay props:', {
-      size,
-      avatarType,
-      avatarId,
-      hasPhotoURL: !!photoURL,
-      photoURL: photoURL ? photoURL.substring(0, 50) + '...' : null
-    });
-  }, [avatarType, avatarId, photoURL]);
   const containerStyle = {
     width: size,
     height: size,
@@ -41,14 +42,24 @@ const AvatarDisplay: React.FC<AvatarDisplayProps> = ({
     overflow: 'hidden' as const,
   };
 
-  // Si es un avatar personalizado y tenemos la URL
-  if (avatarType === 'custom' && photoURL) {
+  // Si es un avatar personalizado y tenemos una URL válida
+  const hasValidPhotoURL = isValidImageUrl(photoURL);
+
+  if (avatarType === 'custom' && hasValidPhotoURL) {
+    // Usar thumbnail para tamaños pequeños (< 60px) si está disponible y es válido
+    const thumbnailUrl = isValidImageUrl(photoURLThumbnail) ? photoURLThumbnail : null;
+    const imageUrl = (size < 60 && thumbnailUrl) ? thumbnailUrl : photoURL;
+
     return (
       <View style={containerStyle}>
         <Image
-          source={{ uri: photoURL }}
-          style={[styles.customImage, { width: size, height: size }]}
+          source={{ uri: imageUrl }}
+          style={[styles.customImage, { width: size, height: size, borderRadius: size / 2 }]}
           resizeMode="cover"
+          onError={() => {
+            // Silenciar errores de carga de imagen
+            console.warn('AvatarDisplay: Error loading image:', imageUrl);
+          }}
         />
       </View>
     );

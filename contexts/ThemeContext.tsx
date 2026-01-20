@@ -49,7 +49,7 @@ const darkTheme: Theme = {
     primary: '#8B5CF6',
     background: '#0A0A0A',
     surface: '#1C1C1E',
-    card: '#2C2C2E',
+    card: '#111111',
     text: '#FFFFFF',
     textSecondary: '#98989D',
     border: '#38383A',

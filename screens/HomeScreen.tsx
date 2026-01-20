@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, Animated, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
+import { DocumentSnapshot } from 'firebase/firestore';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { postsService, Post } from '../services/firestoreService';
+import { useCommunities } from '../hooks/useCommunities';
+import { preloadCommunities } from '../hooks/useCommunityById';
+import { Community } from '../services/communityService';
 import PostCard from '../components/PostCard';
 import Header from '../components/Header';
 import ResponsiveLayout from '../components/ResponsiveLayout';
@@ -24,83 +28,226 @@ const HomeScreen: React.FC = () => {
   const { userProfile } = useUserProfile();
   const { contentMaxWidth, isDesktop } = useResponsive();
   const navigation = useNavigation<HomeScreenNavigationProp>();
-  const [activeTab, setActiveTab] = useState<'following' | 'foryou'>('foryou');
+
+  // Communities
+  const { officialCommunities, isLoading: communitiesLoading } = useCommunities(user?.uid);
+  const [selectedCommunityId, setSelectedCommunityId] = useState<string | null>(null);
+
   const [refreshing, setRefreshing] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filtering, setFiltering] = useState(false); // Loading suave al cambiar de comunidad
   const [error, setError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const [tabsHeight, setTabsHeight] = useState(0);
+  const flatListRef = React.useRef<FlatList>(null);
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const currentScrollPosition = useRef(0);
+
+  // Cache de posts por comunidad para carga instantánea
+  const postsCache = useRef<Map<string, { posts: Post[]; lastDoc: DocumentSnapshot | null; timestamp: number }>>(new Map());
+  const CACHE_DURATION = 60000; // 1 minuto de validez del cache
+  const headerTranslateY = scrollY.interpolate({
+    inputRange: [0, headerHeight + tabsHeight],
+    outputRange: [0, -(headerHeight + tabsHeight)],
+    extrapolate: 'clamp',
+  });
 
   // Función de navegación para el header
   const handleNotificationsPress = () => {
-    navigation.navigate('Notifications');
+    // TODO: Implementar pantalla de notificaciones
+    console.log('Notificaciones - Próximamente');
   };
 
-  // Cargar posts al iniciar
+  // Validar que la comunidad seleccionada exista, si no, resetear a "Todas"
   useEffect(() => {
-    loadPosts();
-  }, []);
+    if (selectedCommunityId && !communitiesLoading) {
+      const communityExists = officialCommunities.some(c => c.id === selectedCommunityId);
+      if (!communityExists) {
+        setSelectedCommunityId(null);
+      }
+    }
+  }, [selectedCommunityId, officialCommunities, communitiesLoading]);
 
-  const loadPosts = async () => {
+  // Precargar comunidades en el cache para que PostCard las muestre rápido
+  useEffect(() => {
+    if (officialCommunities.length > 0) {
+      preloadCommunities(officialCommunities);
+    }
+  }, [officialCommunities]);
+
+  // Referencia para saber si es la primera carga
+  const isFirstLoad = useRef(true);
+
+  // Cargar posts al iniciar y cuando cambia la comunidad seleccionada
+  useEffect(() => {
+    loadPosts(isFirstLoad.current);
+    isFirstLoad.current = false;
+  }, [selectedCommunityId]);
+
+  // Scroll to top cuando se toca el tab de Home estando ya en Home
+  // Si ya está arriba, refrescar la página
+  useEffect(() => {
+    const parentNavigation = navigation.getParent();
+    if (!parentNavigation) return;
+
+    const unsubscribe = parentNavigation.addListener('tabPress', (e: any) => {
+      // Solo hacer scroll si el tab presionado es Home
+      if (e.target?.includes('Home')) {
+        // Si ya estamos arriba (menos de 50px), refrescar
+        if (currentScrollPosition.current < 50) {
+          onRefresh();
+        } else {
+          // Si no, hacer scroll arriba
+          if (flatListRef.current) {
+            flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+          }
+        }
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  const loadPosts = async (isInitial = false, forceRefresh = false) => {
+    const cacheKey = selectedCommunityId || 'all';
+    const cached = postsCache.current.get(cacheKey);
+    const now = Date.now();
+
+    // Si hay cache válido y no es refresh forzado, mostrar cache instantáneamente
+    if (cached && !forceRefresh && (now - cached.timestamp < CACHE_DURATION)) {
+      setPosts(cached.posts);
+      setLastDoc(cached.lastDoc);
+      setHasMore(cached.posts.length === 15);
+      setLoading(false);
+      setFiltering(false);
+      return;
+    }
+
+    // Si hay cache pero está expirado, mostrar el cache mientras carga nuevos datos
+    if (cached && !isInitial) {
+      setPosts(cached.posts);
+      setLastDoc(cached.lastDoc);
+    }
+
     try {
-      setLoading(true);
+      // Solo mostrar loading completo en la carga inicial sin cache
+      if (isInitial && !cached) {
+        setLoading(true);
+      } else if (!cached) {
+        setFiltering(true);
+      }
       setError(null);
-      const publicPosts = await postsService.getPublicPosts(20);
-      setPosts(publicPosts);
+
+      let result;
+      if (selectedCommunityId) {
+        result = await postsService.getByCommunityIdPaginated(selectedCommunityId, 15);
+      } else {
+        result = await postsService.getPublicPostsPaginated(15);
+      }
+
+      const documents = result?.documents || [];
+
+      // Guardar en cache
+      postsCache.current.set(cacheKey, {
+        posts: documents,
+        lastDoc: result?.lastDoc || null,
+        timestamp: now,
+      });
+
+      setPosts(documents);
+      setLastDoc(result?.lastDoc || null);
+      setHasMore(documents.length === 15);
     } catch (err) {
       console.error('Error loading posts:', err);
-      setError('Error al cargar los posts');
+      // Solo mostrar error si no hay cache
+      if (!cached) {
+        setError('Error al cargar los posts');
+      }
     } finally {
       setLoading(false);
+      setFiltering(false);
     }
   };
 
-  const onRefresh = React.useCallback(async () => {
-    setRefreshing(true);
+  const loadMorePosts = async () => {
+    if (loadingMore || !hasMore || loading || !lastDoc) return;
+
     try {
-      await loadPosts();
+      setLoadingMore(true);
+
+      let result;
+      if (selectedCommunityId) {
+        result = await postsService.getByCommunityIdPaginated(selectedCommunityId, 15, lastDoc);
+      } else {
+        result = await postsService.getPublicPostsPaginated(15, lastDoc);
+      }
+
+      const documents = result?.documents || [];
+      if (documents.length > 0) {
+        setPosts([...posts, ...documents]);
+        setLastDoc(result?.lastDoc || null);
+        setHasMore(documents.length === 15);
+      } else {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error('Error loading more posts:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setHasMore(true);
+    setLastDoc(null);
+
+    const cacheKey = selectedCommunityId || 'all';
+    const now = Date.now();
+
+    try {
+      let result;
+      if (selectedCommunityId) {
+        result = await postsService.getByCommunityIdPaginated(selectedCommunityId, 15);
+      } else {
+        result = await postsService.getPublicPostsPaginated(15);
+      }
+      const documents = result?.documents || [];
+
+      // Actualizar cache
+      postsCache.current.set(cacheKey, {
+        posts: documents,
+        lastDoc: result?.lastDoc || null,
+        timestamp: now,
+      });
+
+      setPosts(documents);
+      setLastDoc(result?.lastDoc || null);
+      setHasMore(documents.length === 15);
+      setError(null);
     } catch (err) {
       console.error('Error refreshing posts:', err);
+      setError('Error al cargar los posts');
     } finally {
       setRefreshing(false);
     }
-  }, []);
-
-  const handleLike = async (postId: string) => {
-    if (!postId) return;
-    
-    // Actualizar UI inmediatamente (optimistic update)
-    setPosts(prevPosts => 
-      prevPosts.map(post => 
-        post.id === postId 
-          ? { ...post, likes: post.likes + 1 }
-          : post
-      )
-    );
-
-    try {
-      // TODO: Implementar likes en Firestore cuando tengamos la funcionalidad
-      // await postsService.likePost(postId, user?.uid);
-    } catch (error) {
-      console.error('Error liking post:', error);
-      // Revertir cambio si hay error
-      setPosts(prevPosts => 
-        prevPosts.map(post => 
-          post.id === postId 
-            ? { ...post, likes: post.likes - 1 }
-            : post
-        )
-      );
-    }
-  };
+  }, [selectedCommunityId]);
 
   const handleComment = (postId: string) => {
     const post = posts.find(p => p.id === postId);
     if (post) {
-      navigation.navigate('PostDetail', { post });
+      const parentNavigation = navigation.getParent();
+      if (parentNavigation) {
+        (parentNavigation as any).navigate('PostDetail', { post });
+      }
     }
   };
 
-  const handlePrivateMessage = (userId: string, userData?: { displayName: string; avatarType?: string; avatarId?: string; photoURL?: string }) => {
+  const handlePrivateMessage = (userId: string, userData?: { displayName: string; avatarType?: string; avatarId?: string; photoURL?: string; photoURLThumbnail?: string }) => {
     if (!user || user.uid === userId) return; // No enviar mensaje a sí mismo
 
     // Navegar a la pantalla de conversación en el tab de Inbox
@@ -117,43 +264,96 @@ const HomeScreen: React.FC = () => {
   };
 
   const handlePostPress = (post: Post) => {
-    // Solo navegar si el post tiene imágenes
-    if (post.imageUrls && post.imageUrls.length > 0) {
-      (navigation as any).navigate('PostDetail', { post });
+    // Navegar al detalle del post
+    const parentNavigation = navigation.getParent();
+    if (parentNavigation) {
+      (parentNavigation as any).navigate('PostDetail', { post });
     }
   };
 
-  const renderTabButton = (tab: 'following' | 'foryou', label: string) => (
-    <TouchableOpacity
-      style={[styles.tabButton, activeTab === tab && styles.activeTabButton]}
-      onPress={() => setActiveTab(tab)}
-    >
-      <Text style={[
-        styles.tabText,
-        { color: activeTab === tab ? theme.colors.accent : theme.colors.textSecondary }
-      ]}>
-        {label}
-      </Text>
-      {activeTab === tab && (
-        <View style={[
-          styles.tabIndicator,
+  // Obtener las comunidades del usuario para el filtro
+  const getUserCommunities = useCallback(() => {
+    if (!userProfile?.joinedCommunities) return [];
+    return officialCommunities.filter(c => c.id && userProfile.joinedCommunities.includes(c.id));
+  }, [officialCommunities, userProfile?.joinedCommunities]);
+
+  const handleCommunitySelect = (communityId: string | null) => {
+    console.log('🎯 Community selected:', communityId);
+    setSelectedCommunityId(communityId);
+    // Reset pagination
+    setLastDoc(null);
+    setHasMore(true);
+  };
+
+  const renderCommunityTab = (community: Community | null, label?: string) => {
+    const isSelected = community?.id ? selectedCommunityId === community.id : selectedCommunityId === null;
+
+    return (
+      <TouchableOpacity
+        key={community?.id || 'all'}
+        style={[
+          styles.communityTab,
           {
-            backgroundColor: theme.colors.accent,
-            shadowColor: theme.colors.accent,
-            shadowOffset: { width: 0, height: 0 },
-            shadowOpacity: 0.5,
-            shadowRadius: scale(4),
-          }
-        ]} />
-      )}
-    </TouchableOpacity>
+            backgroundColor: isSelected ? `${theme.colors.accent}15` : theme.colors.surface,
+            borderColor: isSelected ? theme.colors.accent : theme.colors.border,
+          },
+        ]}
+        onPress={() => handleCommunitySelect(community?.id || null)}
+        activeOpacity={0.7}
+      >
+        {community ? (
+          <>
+            <Ionicons
+              name={community.icon as any}
+              size={scale(16)}
+              color={isSelected ? theme.colors.accent : theme.colors.text}
+            />
+            <Text
+              style={[
+                styles.communityTabText,
+                { color: isSelected ? theme.colors.accent : theme.colors.text },
+              ]}
+              numberOfLines={1}
+            >
+              {community.name}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Ionicons
+              name="globe-outline"
+              size={scale(16)}
+              color={isSelected ? theme.colors.accent : theme.colors.text}
+            />
+            <Text
+              style={[
+                styles.communityTabText,
+                { color: isSelected ? theme.colors.accent : theme.colors.text },
+              ]}
+            >
+              {label || 'Todas'}
+            </Text>
+          </>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const renderCommunitySelector = () => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.communityTabsContainer}
+    >
+      {renderCommunityTab(null, 'Todas')}
+      {officialCommunities.map(community => renderCommunityTab(community))}
+    </ScrollView>
   );
 
   const renderPost = ({ item }: { item: Post }) => (
     <View style={styles.postContainer}>
       <PostCard
         post={item}
-        onLike={handleLike}
         onComment={handleComment}
         onPrivateMessage={handlePrivateMessage}
         onPress={handlePostPress}
@@ -161,13 +361,10 @@ const HomeScreen: React.FC = () => {
     </View>
   );
 
-  // Filtrar posts según la pestaña activa
-  const getFilteredPosts = () => {
-    if (activeTab === 'following') {
-      // TODO: Implementar funcionalidad de "siguiendo" cuando tengamos follows
-      return posts; // Por ahora mostrar todos
-    }
-    return posts; // Para ti: todos los posts
+  // Obtener la comunidad seleccionada
+  const getSelectedCommunity = () => {
+    if (!selectedCommunityId) return null;
+    return officialCommunities.find(c => c.id === selectedCommunityId);
   };
 
   // Loading state
@@ -208,86 +405,97 @@ const HomeScreen: React.FC = () => {
     );
   }
 
-  const renderListHeader = () => (
-    <View>
-      {/* Header - solo en móvil */}
-      {!isDesktop && <Header onNotificationsPress={handleNotificationsPress} />}
-
-      {/* Tabs */}
-      <View style={[styles.tabContainer, { borderBottomColor: theme.colors.border }]}>
-        {renderTabButton('following', 'Siguiendo')}
-        {renderTabButton('foryou', 'Para ti')}
-      </View>
-
-      {/* Campo de creación rápida */}
-      <TouchableOpacity
-        style={[
-          styles.quickPostContainer,
-          {
-            backgroundColor: theme.colors.card,
-            shadowColor: theme.dark ? theme.colors.glow : '#000',
-            shadowOffset: { width: 0, height: scale(1) },
-            shadowOpacity: theme.dark ? 0.15 : 0.05,
-            shadowRadius: theme.dark ? scale(8) : scale(4),
-          }
-        ]}
-        onPress={() => (navigation as any).navigate('Create')}
-        activeOpacity={0.7}
-      >
-        <View style={styles.quickPostContent}>
-          {userProfile ? (
-            <AvatarDisplay
-              size={scale(40)}
-              avatarType={userProfile.avatarType || 'predefined'}
-              avatarId={userProfile.avatarId || 'male'}
-              photoURL={userProfile.photoURL}
-              backgroundColor={theme.colors.accent}
-              showBorder={false}
-            />
-          ) : (
-            <View style={[styles.quickPostAvatar, { backgroundColor: theme.colors.accent }]}>
-              <Ionicons name="person" size={scale(20)} color="white" />
-            </View>
-          )}
-          <Text style={[styles.quickPostPlaceholder, { color: theme.colors.textSecondary }]}>
-            ¿Qué quieres compartir?
-          </Text>
-        </View>
-        <View style={styles.quickPostActions}>
-          <Ionicons name="image-outline" size={scale(20)} color={theme.colors.textSecondary} />
-          <Ionicons name="videocam-outline" size={scale(20)} color={theme.colors.textSecondary} />
-        </View>
-      </TouchableOpacity>
-    </View>
-  );
-
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Feed */}
-      <FlatList
-        data={getFilteredPosts()}
+      {/* Animated Header - fijo arriba */}
+      {!isDesktop && (
+        <Animated.View
+          style={[
+            styles.animatedHeader,
+            {
+              backgroundColor: theme.colors.background,
+              transform: [{ translateY: headerTranslateY }],
+            },
+          ]}
+        >
+          <View onLayout={(event) => {
+            const { height } = event.nativeEvent.layout;
+            setHeaderHeight(height);
+          }}>
+            <Header onNotificationsPress={handleNotificationsPress} />
+          </View>
+
+          <View
+            onLayout={(event) => {
+              const { height } = event.nativeEvent.layout;
+              setTabsHeight(height);
+            }}
+            style={[styles.communityTabContainer, { borderBottomColor: theme.colors.border }]}
+          >
+            {renderCommunitySelector()}
+          </View>
+        </Animated.View>
+      )}
+
+      {/* Feed con padding top para compensar el header */}
+      <Animated.FlatList
+        ref={flatListRef}
+        data={posts}
         renderItem={renderPost}
         keyExtractor={item => item.id || item.userId}
-        ListHeaderComponent={renderListHeader}
         contentContainerStyle={[
-          getFilteredPosts().length === 0 && styles.emptyContainer
+          { paddingTop: !isDesktop ? headerHeight + tabsHeight + SPACING.md : 0 },
+          posts.length === 0 && styles.emptyContainer
         ]}
         showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          {
+            useNativeDriver: true,
+            listener: (event: any) => {
+              currentScrollPosition.current = event.nativeEvent.contentOffset.y;
+            }
+          }
+        )}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={theme.colors.accent}
             colors={[theme.colors.accent]}
+            progressViewOffset={headerHeight + tabsHeight}
           />
         }
-        ListEmptyComponent={() => (
+        onEndReached={loadMorePosts}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={() =>
+          loadingMore ? (
+            <View style={styles.loadingMore}>
+              <ActivityIndicator size="small" color={theme.colors.accent} />
+              <Text style={[styles.loadingMoreText, { color: theme.colors.textSecondary }]}>
+                Cargando más posts...
+              </Text>
+            </View>
+          ) : null
+        }
+        ListHeaderComponent={() =>
+          filtering ? (
+            <View style={styles.filteringIndicator}>
+              <ActivityIndicator size="small" color={theme.colors.accent} />
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={() =>
+          filtering ? null : (
           <View style={styles.emptyState}>
             <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
-              ¡Sé el primero en publicar!
+              {selectedCommunityId ? 'Sin publicaciones' : '¡Sé el primero en publicar!'}
             </Text>
             <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
-              No hay posts aún. Crea el primer post y comienza la conversación.
+              {selectedCommunityId
+                ? 'Esta comunidad aún no tiene posts. ¡Sé el primero!'
+                : 'No hay posts aún. Crea el primer post y comienza la conversación.'}
             </Text>
             <TouchableOpacity
               style={[
@@ -315,6 +523,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  animatedHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+  },
   tabContainer: {
     flexDirection: 'row',
     borderBottomWidth: scale(0.5),
@@ -337,6 +552,27 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: scale(3),
+  },
+  communityTabContainer: {
+    borderBottomWidth: scale(0.5),
+  },
+  communityTabsContainer: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  communityTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.full,
+    borderWidth: 1,
+    gap: SPACING.xs,
+  },
+  communityTabText: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
   },
   quickPostContainer: {
     flexDirection: 'row',
@@ -375,7 +611,6 @@ const styles = StyleSheet.create({
   },
   postContainer: {
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.xs,
   },
   emptyContainer: {
     flex: 1,
@@ -389,6 +624,20 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: SPACING.lg,
     fontSize: FONT_SIZE.base,
+    fontWeight: FONT_WEIGHT.regular,
+  },
+  filteringIndicator: {
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  loadingMore: {
+    paddingVertical: SPACING.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingMoreText: {
+    marginTop: SPACING.sm,
+    fontSize: FONT_SIZE.sm,
     fontWeight: FONT_WEIGHT.regular,
   },
   errorText: {

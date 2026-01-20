@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect, useState } from 'react';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Alert, Platform } from 'react-native';
+import { Alert, Platform, StatusBar } from 'react-native';
 
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -9,6 +9,18 @@ import { UserProfileProvider } from './contexts/UserProfileContext';
 import { ScrollProvider } from './contexts/ScrollContext';
 import MainStackNavigator from './navigation/MainStackNavigator';
 import ErrorBoundary from './components/ErrorBoundary';
+import SplashScreen from './components/SplashScreen';
+
+// Tema oscuro personalizado para React Navigation
+const CustomDarkTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: '#0A0A0A',
+    card: '#0A0A0A',
+    primary: '#8B5CF6',
+  },
+};
 
 // Configuración de linking para web
 const linking: any = {
@@ -69,26 +81,26 @@ if (typeof window !== 'undefined') {
 }
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
   useEffect(() => {
     console.log('🚀 App component mounted');
     console.log('📱 Platform:', Platform.OS);
-
-    // Test basic functionality
-    try {
-      console.log('✅ App initialization started');
-    } catch (error) {
-      console.error('❌ Error in App initialization:', error);
-    }
   }, []);
+
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
 
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
+        <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
         <ThemeProvider>
           <AuthProvider>
             <UserProfileProvider>
               <ScrollProvider>
-                <NavigationContainer linking={linking}>
+                <NavigationContainer linking={linking} theme={CustomDarkTheme}>
                   <MainStackNavigator />
                 </NavigationContainer>
               </ScrollProvider>

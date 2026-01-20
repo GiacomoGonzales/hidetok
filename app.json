@@ -11,12 +11,42 @@
       "resizeMode": "contain",
       "backgroundColor": "#0A0A0A"
     },
+    "jsEngine": "hermes",
     "android": {
       "package": "com.hidetoksimple.app",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
+      },
+      "enableHermes": true,
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#0A0A0A"
+      },
+      "userInterfaceStyle": "automatic",
+      "backgroundColor": "#0A0A0A",
+      "softwareKeyboardLayoutMode": "pan"
+    },
+    "ios": {
+      "bundleIdentifier": "com.hidetoksimple.app",
+      "supportsTablet": false,
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#0A0A0A",
+        "dark": {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0A0A0A"
+        }
+      },
+      "userInterfaceStyle": "automatic",
+      "backgroundColor": "#0A0A0A",
+      "infoPlist": {
+        "UIViewControllerBasedStatusBarAppearance": false,
+        "UIStatusBarStyle": "UIStatusBarStyleLightContent"
       }
     },
     "web": {

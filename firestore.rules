@@ -1,0 +1,155 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Funciones helper
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // === USUARIOS ===
+    match /users/{userId} {
+      // Cualquiera puede leer perfiles públicos
+      allow read: if true;
+
+      // Solo el dueño puede crear/actualizar su perfil
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.uid;
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.uid;
+      allow delete: if false; // No permitir eliminar usuarios
+    }
+
+    // === COMUNIDADES ===
+    match /communities/{communityId} {
+      // Cualquiera puede leer comunidades
+      allow read: if true;
+
+      // Solo usuarios autenticados pueden crear comunidades
+      allow create: if isAuthenticated();
+
+      // Solo moderadores pueden actualizar la comunidad
+      // O cualquier usuario autenticado puede actualizar contadores
+      allow update: if isAuthenticated() &&
+        (request.auth.uid in resource.data.moderators ||
+         resource.data.createdBy == request.auth.uid ||
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['memberCount', 'postCount', 'updatedAt']));
+
+      allow delete: if false; // No permitir eliminar comunidades
+
+      // Subcolección de miembros
+      match /members/{memberId} {
+        allow read: if true;
+        allow create: if isAuthenticated() && request.auth.uid == memberId;
+        allow update: if isAuthenticated() && request.auth.uid == memberId;
+        allow delete: if isAuthenticated() && request.auth.uid == memberId;
+      }
+    }
+
+    // === POSTS ===
+    match /posts/{postId} {
+      // Cualquiera puede leer posts públicos
+      allow read: if true;
+
+      // Solo usuarios autenticados pueden crear posts
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+
+      // El autor puede actualizar su post, o cualquiera puede actualizar contadores
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        // Permitir actualizar solo contadores (views, agreementCount, etc.)
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['views', 'agreementCount', 'disagreementCount', 'likes', 'comments', 'shares', 'reposts', 'updatedAt'])
+      );
+
+      // Solo el autor puede eliminar su post
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // === VOTOS ===
+    match /votes/{voteId} {
+      allow read: if true;
+
+      // Solo el votante puede crear/modificar/eliminar su voto
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid;
+    }
+
+    // === VOTOS DE COMENTARIOS ===
+    match /commentVotes/{voteId} {
+      allow read: if true;
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid;
+    }
+
+    // === COMENTARIOS ===
+    match /comments/{commentId} {
+      allow read: if true;
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        // Permitir actualizar contadores
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['likes', 'agreementCount', 'disagreementCount'])
+      );
+
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // === LIKES (legacy, mantener para retrocompatibilidad) ===
+    match /likes/{likeId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    // === FOLLOWS ===
+    match /follows/{followId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    // === CONVERSACIONES ===
+    match /conversations/{conversationId} {
+      // Solo participantes pueden leer/escribir
+      allow read: if isAuthenticated() &&
+        request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() &&
+        request.auth.uid in resource.data.participants;
+      allow delete: if false;
+
+      // Mensajes dentro de conversaciones
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() &&
+          request.resource.data.senderId == request.auth.uid;
+        allow update: if isAuthenticated();
+        allow delete: if false;
+      }
+    }
+
+    // === REPORTES ===
+    match /reports/{reportId} {
+      // Solo el reporter puede crear, nadie puede leer (solo admin via console)
+      allow create: if isAuthenticated();
+      allow read, update, delete: if false;
+    }
+  }
+}

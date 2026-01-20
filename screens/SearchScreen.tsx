@@ -24,22 +24,12 @@ import {
 type SearchCategory = 'trending' | 'users' | 'recent';
 
 const SearchScreen: React.FC = () => {
-  console.log('🔍 SearchScreen rendering...');
-
   const { theme } = useTheme();
   const { isDesktop } = useResponsive();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<SearchCategory>('trending');
   const [searchResults, setSearchResults] = useState<Post[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
-
-  console.log('🔍 SearchScreen - isDesktop:', isDesktop);
-  console.log('🔍 SearchScreen - theme:', theme);
-
-  // Debug: verificar si isDesktop se está detectando correctamente
-  useEffect(() => {
-    console.log('🔍 SearchScreen mounted - isDesktop:', isDesktop);
-  }, [isDesktop]);
 
   // Simular búsqueda en tiempo real
   useEffect(() => {
@@ -75,6 +65,11 @@ const SearchScreen: React.FC = () => {
 
   const renderContent = () => (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Handle del modal - indicador visual para deslizar hacia abajo */}
+      <View style={styles.modalHandleContainer}>
+        <View style={[styles.modalHandle, { backgroundColor: theme.colors.border }]} />
+      </View>
+
       {/* Header con búsqueda */}
       <View style={[styles.header, {
         backgroundColor: theme.colors.background,
@@ -416,6 +411,18 @@ const SearchScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  modalHandleContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 6,
+    paddingBottom: 12,
+  },
+  modalHandle: {
+    width: 50,
+    height: 5,
+    borderRadius: 2.5,
+    opacity: 0.4,
   },
   header: {
     paddingHorizontal: 16,

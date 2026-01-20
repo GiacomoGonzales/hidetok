@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { useTheme } from '../contexts/ThemeContext';
 import { Message } from '../services/messagesService';
 import { formatRelativeTime } from '../utils/dateUtils';
@@ -42,7 +43,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isCurrentUser })
           <Image
             source={{ uri: message.imageUrl }}
             style={[styles.messageImage, { backgroundColor: theme.colors.background }]}
-            resizeMode="cover"
+            contentFit="cover"
+            transition={200}
+            cachePolicy="memory-disk"
           />
         )}
 

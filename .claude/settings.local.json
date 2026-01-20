@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(npx kill-port:*)",
-      "Bash(npx expo start:*)"
+      "Bash(npx expo start:*)",
+      "Bash(eas env:create:*)",
+      "Bash(eas env:list:*)",
+      "Bash(eas build:*)",
+      "Bash(npx expo install:*)",
+      "Bash(del screensUserProfileScreen.tsx)",
+      "Bash(move screensUserProfileScreen_NEW.tsx screensUserProfileScreen.tsx)",
+      "Bash(npx tsc:*)",
+      "Bash(cat:*)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []
