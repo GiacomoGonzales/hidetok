@@ -127,7 +127,7 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ["image"],
         allowsEditing: Platform.OS === 'ios', // Solo en iOS funciona bien el editor
         aspect: [1, 1],
         quality: 0.8,

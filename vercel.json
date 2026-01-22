@@ -1,7 +1,19 @@
 {
-  "buildCommand": "npx expo export -p web",
+  "buildCommand": "npx expo export -p web && cp -r public/* dist/",
   "outputDirectory": "dist",
   "rewrites": [
+    {
+      "source": "/privacy",
+      "destination": "/privacy-policy.html"
+    },
+    {
+      "source": "/terms",
+      "destination": "/terms.html"
+    },
+    {
+      "source": "/support",
+      "destination": "/support.html"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"

@@ -334,7 +334,7 @@ const ProfileScreen: React.FC = () => {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ["image"],
         allowsEditing: true,
         aspect: [16, 9],
         quality: 0.8,

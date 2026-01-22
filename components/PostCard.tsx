@@ -222,10 +222,7 @@ const PostCard: React.FC<PostCardProps> = ({
     const imageUrls = postToUse?.imageUrls;
 
     if (imageUrls && imageUrls.length > 0) {
-      // Usar dimensiones por defecto inmediatamente
-      setImageDimensions({ width: 16, height: 9, aspectRatio: 16/9 });
-
-      // Intentar obtener dimensiones reales
+      // Intentar obtener dimensiones reales (sin cambiar el estado hasta obtenerlas)
       RNImage.getSize(
         imageUrls[0],
         (width, height) => {
@@ -233,24 +230,13 @@ const PostCard: React.FC<PostCardProps> = ({
           setImageDimensions({ width, height, aspectRatio });
         },
         (error) => {
-          // Si falla, mantener las dimensiones por defecto
-          console.log('Using default image dimensions (16:9)');
+          // Si falla, usar dimensiones por defecto 4:3
+          console.log('Using default image dimensions (4:3)');
+          setImageDimensions({ width: 4, height: 3, aspectRatio: 4/3 });
         }
       );
     }
   }, [isRepost, originalPost, post.imageUrls]);
-
-  const getImageHeight = () => {
-    if (!imageDimensions) {
-      return scale(300); // Altura por defecto mientras carga
-    }
-
-    // Calcular altura basada en el aspect ratio
-    const calculatedHeight = carouselWidth / imageDimensions.aspectRatio;
-
-    // Limitar entre MIN y MAX
-    return Math.max(MIN_IMAGE_HEIGHT, Math.min(MAX_IMAGE_HEIGHT, calculatedHeight));
-  };
 
   // Manejar voto de acuerdo
   const handleVoteAgree = async () => {
@@ -461,16 +447,26 @@ const PostCard: React.FC<PostCardProps> = ({
   const renderMedia = () => {
     if (!displayPost.imageUrls || displayPost.imageUrls.length === 0) return null;
 
-    const imageHeight = getImageHeight();
     const thumbnails = displayPost.imageUrlsThumbnails || [];
 
     if (displayPost.imageUrls.length === 1) {
       // Validar que el thumbnail sea un string válido
       const thumbnail = typeof thumbnails[0] === 'string' ? thumbnails[0] : undefined;
 
+      // Usar aspect ratio real si está disponible, sino usar 4:3 por defecto
+      const aspectRatio = imageDimensions?.aspectRatio || (4/3);
+      // Calcular altura basada en aspect ratio, limitada entre MIN y MAX
+      const calculatedHeight = Math.max(
+        MIN_IMAGE_HEIGHT,
+        Math.min(MAX_IMAGE_HEIGHT, carouselWidth / aspectRatio)
+      );
+
       return (
         <TouchableOpacity
-          style={styles.singleMediaContainer}
+          style={[
+            styles.singleMediaContainer,
+            { height: calculatedHeight }
+          ]}
           onPress={() => handleImagePress(0)}
           activeOpacity={0.98}
         >
@@ -482,11 +478,11 @@ const PostCard: React.FC<PostCardProps> = ({
               styles.singleMedia,
               {
                 backgroundColor: theme.colors.surface,
-                height: imageHeight,
+                height: '100%',
               }
             ]}
             contentFit="cover"
-            transition={200}
+            transition={300}
             priority="high"
             cachePolicy="disk"
             allowDownscaling={false}
@@ -499,8 +495,15 @@ const PostCard: React.FC<PostCardProps> = ({
     }
 
     // Carrusel para múltiples imágenes
+    // Usar aspect ratio real si está disponible, sino usar 4:3 por defecto
+    const aspectRatio = imageDimensions?.aspectRatio || (4/3);
+    const carouselHeight = Math.max(
+      MIN_IMAGE_HEIGHT,
+      Math.min(MAX_IMAGE_HEIGHT, carouselWidth / aspectRatio)
+    );
+
     return (
-      <View style={styles.carouselContainer}>
+      <View style={[styles.carouselContainer, { height: carouselHeight }]}>
         <ScrollView
           ref={scrollViewRef}
           horizontal
@@ -520,7 +523,7 @@ const PostCard: React.FC<PostCardProps> = ({
             return (
               <TouchableOpacity
                 key={index}
-                style={[styles.carouselImageContainer, { width: carouselWidth }]}
+                style={[styles.carouselImageContainer, { width: carouselWidth, height: carouselHeight }]}
                 onPress={() => handleImagePress(index)}
                 activeOpacity={0.98}
               >
@@ -532,11 +535,11 @@ const PostCard: React.FC<PostCardProps> = ({
                   styles.carouselImage,
                   {
                     backgroundColor: theme.colors.surface,
-                    height: imageHeight,
+                    height: '100%',
                   }
                 ]}
                 contentFit="cover"
-                transition={200}
+                transition={300}
                 priority="high"
                 cachePolicy="disk"
                 allowDownscaling={false}

@@ -151,5 +151,23 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow read, update, delete: if false;
     }
+
+    // === NOTIFICACIONES ===
+    match /notifications/{notificationId} {
+      // Solo el destinatario puede leer sus notificaciones
+      allow read: if isAuthenticated() &&
+        resource.data.recipientId == request.auth.uid;
+
+      // Usuarios autenticados pueden crear notificaciones
+      allow create: if isAuthenticated();
+
+      // Solo el destinatario puede actualizar (marcar como leída)
+      allow update: if isAuthenticated() &&
+        resource.data.recipientId == request.auth.uid;
+
+      // Solo el destinatario puede eliminar sus notificaciones
+      allow delete: if isAuthenticated() &&
+        resource.data.recipientId == request.auth.uid;
+    }
   }
 }

@@ -11,7 +11,18 @@
       "Bash(move screensUserProfileScreen_NEW.tsx screensUserProfileScreen.tsx)",
       "Bash(npx tsc:*)",
       "Bash(cat:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npx expo:*)",
+      "Bash(xcrun xctrace:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(npx eas-cli:*)",
+      "Bash(./gradlew assembleRelease:*)",
+      "Bash(chmod:*)",
+      "Bash(npm run build:*)",
+      "Bash(sips -g all:*)",
+      "Bash(sips:*)"
     ],
     "deny": [],
     "ask": []

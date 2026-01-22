@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "hidetok-simple",
-    "slug": "hidetok-simple",
+    "name": "HideTok",
+    "slug": "hidetok",
     "version": "1.0.0",
     "orientation": "portrait",
     "platforms": [
@@ -17,11 +17,11 @@
     },
     "jsEngine": "hermes",
     "android": {
-      "package": "com.hidetoksimple.app",
+      "package": "com.hidetok.app",
       "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0A0A0A"
       },
       "enableHermes": true,
       "splash": {
@@ -34,7 +34,7 @@
       "softwareKeyboardLayoutMode": "pan"
     },
     "ios": {
-      "bundleIdentifier": "com.hidetoksimple.app",
+      "bundleIdentifier": "com.hidetok.app",
       "supportsTablet": false,
       "splash": {
         "image": "./assets/splash-icon.png",
@@ -50,7 +50,10 @@
       "backgroundColor": "#0A0A0A",
       "infoPlist": {
         "UIViewControllerBasedStatusBarAppearance": false,
-        "UIStatusBarStyle": "UIStatusBarStyleLightContent"
+        "UIStatusBarStyle": "UIStatusBarStyleLightContent",
+        "NSCameraUsageDescription": "HideTok necesita acceso a tu cámara para que puedas tomar fotos y videos para compartir en tus publicaciones.",
+        "NSMicrophoneUsageDescription": "HideTok necesita acceso a tu micrófono para grabar audio en tus videos.",
+        "NSPhotoLibraryUsageDescription": "HideTok necesita acceso a tu galería para que puedas seleccionar fotos y videos para compartir."
       }
     },
     "web": {
@@ -65,11 +68,19 @@
     },
     "extra": {
       "eas": {
-        "projectId": "31297521-34c6-4238-af4f-e663953af31f"
+        "projectId": "920ff7aa-c0a9-481d-82c0-4e3d57386175"
       }
     },
     "plugins": [
-      "expo-web-browser"
-    ]
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#8B5CF6"
+        }
+      ]
+    ],
+    "owner": "giacomogonzales20"
   }
 }

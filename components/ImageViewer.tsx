@@ -9,6 +9,7 @@ import {
   Text,
   Animated,
   PanResponder,
+  ScrollView,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,199 +25,6 @@ interface ImageViewerProps {
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-// Componente individual para cada imagen con zoom y gestos
-const ZoomableImage: React.FC<{
-  imageUrl: string;
-  onSwipeDown: () => void;
-  isActive: boolean;
-}> = ({ imageUrl, onSwipeDown, isActive }) => {
-  const scale = useRef(new Animated.Value(1)).current;
-  const translateX = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const backgroundOpacity = useRef(new Animated.Value(1)).current;
-
-  const [isZoomed, setIsZoomed] = useState(false);
-  const lastTap = useRef(0);
-
-  // PanResponder para manejar gestos
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        if (isZoomed) {
-          // Si está zoomeado, permitir pan
-          translateX.setValue(gestureState.dx);
-          translateY.setValue(gestureState.dy);
-        } else {
-          // Si no está zoomeado, permitir swipe vertical to dismiss (arriba o abajo)
-          translateY.setValue(gestureState.dy);
-          // Reducir opacidad del fondo según el swipe (en cualquier dirección)
-          const opacity = Math.max(0, 1 - Math.abs(gestureState.dy) / 300);
-          backgroundOpacity.setValue(opacity);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        const velocity = Math.abs(gestureState.vy); // Velocidad vertical absoluta
-        const distance = Math.abs(gestureState.dy); // Distancia vertical absoluta
-
-        // Si deslizó verticalmente más de 120px o con velocidad alta, cerrar
-        if (!isZoomed && (distance > 120 || (distance > 50 && velocity > 0.5))) {
-          // Determinar dirección (arriba o abajo)
-          const direction = gestureState.dy > 0 ? screenHeight : -screenHeight;
-
-          // Animar suavemente hacia la dirección del swipe y desvanecer
-          Animated.parallel([
-            Animated.timing(translateY, {
-              toValue: direction,
-              duration: 300,
-              useNativeDriver: true,
-            }),
-            Animated.timing(backgroundOpacity, {
-              toValue: 0,
-              duration: 300,
-              useNativeDriver: true,
-            }),
-          ]).start(() => {
-            onSwipeDown();
-          });
-          return;
-        }
-
-        // Si está zoomeado, aplicar límites
-        if (isZoomed) {
-          const maxTranslate = screenWidth * 0.5;
-          const targetX = Math.max(-maxTranslate, Math.min(maxTranslate, gestureState.dx));
-          const targetY = Math.max(-maxTranslate, Math.min(maxTranslate, gestureState.dy));
-
-          Animated.parallel([
-            Animated.spring(translateX, {
-              toValue: targetX,
-              useNativeDriver: true,
-              friction: 7,
-              tension: 40,
-            }),
-            Animated.spring(translateY, {
-              toValue: targetY,
-              useNativeDriver: true,
-              friction: 7,
-              tension: 40,
-            }),
-          ]).start();
-        } else {
-          // Volver a la posición original con animación suave
-          Animated.parallel([
-            Animated.spring(translateY, {
-              toValue: 0,
-              useNativeDriver: true,
-              friction: 9,
-              tension: 50,
-            }),
-            Animated.spring(backgroundOpacity, {
-              toValue: 1,
-              useNativeDriver: true,
-              friction: 9,
-              tension: 50,
-            }),
-          ]).start();
-        }
-      },
-    })
-  ).current;
-
-  // Doble tap para zoom
-  const handleDoubleTap = () => {
-    const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
-
-    if (now - lastTap.current < DOUBLE_TAP_DELAY) {
-      // Doble tap detectado
-      if (isZoomed) {
-        // Zoom out
-        Animated.parallel([
-          Animated.spring(scale, {
-            toValue: 1,
-            useNativeDriver: true,
-            friction: 7,
-          }),
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-            friction: 7,
-          }),
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            friction: 7,
-          }),
-        ]).start();
-        setIsZoomed(false);
-      } else {
-        // Zoom in
-        Animated.spring(scale, {
-          toValue: 2.5,
-          useNativeDriver: true,
-          friction: 7,
-        }).start();
-        setIsZoomed(true);
-      }
-    }
-
-    lastTap.current = now;
-  };
-
-  // Reset cuando cambia la imagen activa
-  React.useEffect(() => {
-    if (!isActive) {
-      setIsZoomed(false);
-      scale.setValue(1);
-      translateX.setValue(0);
-      translateY.setValue(0);
-      backgroundOpacity.setValue(1);
-    }
-  }, [isActive]);
-
-  return (
-    <Animated.View
-      style={[
-        styles.imageContainer,
-        {
-          opacity: backgroundOpacity,
-        },
-      ]}
-      {...panResponder.panHandlers}
-    >
-      <TouchableOpacity
-        activeOpacity={1}
-        onPress={handleDoubleTap}
-        style={{ width: '100%', height: '100%' }}
-      >
-        <Animated.View
-          style={{
-            width: '100%',
-            height: '100%',
-            transform: [
-              { scale },
-              { translateX },
-              { translateY },
-            ],
-          }}
-        >
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.image}
-            contentFit="contain"
-            transition={300}
-            cachePolicy="memory-disk"
-          />
-        </Animated.View>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
-
 const ImageViewer: React.FC<ImageViewerProps> = ({
   visible,
   imageUrls,
@@ -225,29 +33,148 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
-  const scrollX = useRef(new Animated.Value(0)).current;
+  const scrollViewRef = useRef<ScrollView>(null);
 
-  // Scroll al índice inicial cuando se abre el modal
+  // Animación para el swipe vertical (cerrar)
+  const translateY = useRef(new Animated.Value(0)).current;
+  const backgroundOpacity = useRef(new Animated.Value(1)).current;
+
+  // Tracking del swipe
+  const isHorizontalSwipe = useRef(false);
+  const gestureStarted = useRef(false);
+
+  // Reset cuando se abre el modal
   React.useEffect(() => {
     if (visible) {
       setCurrentIndex(initialIndex);
-      scrollX.setValue(initialIndex * screenWidth);
+      translateY.setValue(0);
+      backgroundOpacity.setValue(1);
+      isHorizontalSwipe.current = false;
+      gestureStarted.current = false;
+
+      // Scroll a la imagen inicial
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ x: initialIndex * screenWidth, animated: false });
+      }, 50);
     }
   }, [visible, initialIndex]);
 
-  const handleScroll = Animated.event(
-    [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-    {
-      useNativeDriver: false,
-      listener: (event: any) => {
-        const offsetX = event.nativeEvent.contentOffset.x;
-        const index = Math.round(offsetX / screenWidth);
-        setCurrentIndex(index);
-      },
-    }
-  );
+  // PanResponder para cerrar con swipe vertical
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Solo capturar si es claramente un gesto vertical
+        const isVertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 1.5;
+        const hasMovedEnough = Math.abs(gestureState.dy) > 10;
 
-  // Si hay una sola imagen, mostrar directamente sin carousel
+        // Si ya determinamos que es horizontal, no capturar
+        if (isHorizontalSwipe.current) {
+          return false;
+        }
+
+        // Determinar dirección inicial del gesto
+        if (!gestureStarted.current && (Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5)) {
+          gestureStarted.current = true;
+          isHorizontalSwipe.current = Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+        }
+
+        return isVertical && hasMovedEnough && !isHorizontalSwipe.current;
+      },
+      onPanResponderGrant: () => {
+        // Gesto iniciado
+      },
+      onPanResponderMove: (_, gestureState) => {
+        translateY.setValue(gestureState.dy);
+        const opacity = Math.max(0, 1 - Math.abs(gestureState.dy) / 300);
+        backgroundOpacity.setValue(opacity);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        gestureStarted.current = false;
+        isHorizontalSwipe.current = false;
+
+        const velocity = Math.abs(gestureState.vy);
+        const distance = Math.abs(gestureState.dy);
+
+        // Si deslizó lo suficiente, cerrar
+        if (distance > 100 || (distance > 40 && velocity > 0.5)) {
+          const direction = gestureState.dy > 0 ? screenHeight : -screenHeight;
+
+          Animated.parallel([
+            Animated.timing(translateY, {
+              toValue: direction,
+              duration: 250,
+              useNativeDriver: true,
+            }),
+            Animated.timing(backgroundOpacity, {
+              toValue: 0,
+              duration: 250,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            onClose();
+            // Reset para la próxima vez
+            translateY.setValue(0);
+            backgroundOpacity.setValue(1);
+          });
+        } else {
+          // Volver a posición original
+          Animated.parallel([
+            Animated.spring(translateY, {
+              toValue: 0,
+              useNativeDriver: true,
+              friction: 8,
+              tension: 50,
+            }),
+            Animated.spring(backgroundOpacity, {
+              toValue: 1,
+              useNativeDriver: true,
+              friction: 8,
+              tension: 50,
+            }),
+          ]).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        gestureStarted.current = false;
+        isHorizontalSwipe.current = false;
+        // Volver a posición original si se cancela
+        Animated.parallel([
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+          }),
+          Animated.spring(backgroundOpacity, {
+            toValue: 1,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      },
+    })
+  ).current;
+
+  const handleScroll = (event: any) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(offsetX / screenWidth);
+    if (index !== currentIndex && index >= 0 && index < imageUrls.length) {
+      setCurrentIndex(index);
+    }
+  };
+
+  const handleScrollBegin = () => {
+    // Marcar como swipe horizontal cuando el ScrollView inicia
+    isHorizontalSwipe.current = true;
+    gestureStarted.current = true;
+  };
+
+  const handleScrollEnd = () => {
+    // Reset después de terminar el scroll horizontal
+    setTimeout(() => {
+      isHorizontalSwipe.current = false;
+      gestureStarted.current = false;
+    }, 100);
+  };
+
   const isSingleImage = imageUrls.length === 1;
 
   return (
@@ -262,11 +189,17 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
         backgroundColor="rgba(0, 0, 0, 0.95)"
         barStyle="light-content"
       />
-      <View style={styles.container}>
-        {/* Background */}
-        <View style={styles.background}>
-          <View style={styles.backgroundOverlay} />
-        </View>
+
+      {/* Background con opacidad animada */}
+      <Animated.View
+        style={[
+          styles.background,
+          { opacity: backgroundOpacity }
+        ]}
+      />
+
+      {/* Contenedor principal con pan responder */}
+      <View style={styles.container} {...panResponder.panHandlers}>
 
         {/* Close button */}
         <TouchableOpacity
@@ -277,7 +210,7 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
           <Ionicons name="close" size={ICON_SIZE.xl} color="#FFFFFF" />
         </TouchableOpacity>
 
-        {/* Image counter - solo mostrar si hay múltiples imágenes */}
+        {/* Image counter */}
         {!isSingleImage && (
           <View style={[styles.imageCounter, { top: insets.top + SPACING.md }]}>
             <Text style={styles.imageCounterText}>
@@ -286,37 +219,55 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
           </View>
         )}
 
-        {/* Imagen única o carousel */}
-        {isSingleImage ? (
-          // Una sola imagen - sin scroll horizontal
-          <ZoomableImage
-            imageUrl={imageUrls[0]}
-            onSwipeDown={onClose}
-            isActive={true}
-          />
-        ) : (
-          // Múltiples imágenes - con carousel
-          <Animated.ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-            style={styles.scrollView}
-            contentOffset={{ x: initialIndex * screenWidth, y: 0 }}
-          >
-            {imageUrls.map((imageUrl, index) => (
-              <ZoomableImage
-                key={index}
-                imageUrl={imageUrl}
-                onSwipeDown={onClose}
-                isActive={index === currentIndex}
+        {/* Contenido animado (se mueve con el swipe vertical) */}
+        <Animated.View
+          style={[
+            styles.contentContainer,
+            { transform: [{ translateY }] }
+          ]}
+        >
+          {isSingleImage ? (
+            // Una sola imagen
+            <View style={styles.imageWrapper}>
+              <Image
+                source={{ uri: imageUrls[0] }}
+                style={styles.image}
+                contentFit="contain"
+                transition={200}
+                cachePolicy="memory-disk"
               />
-            ))}
-          </Animated.ScrollView>
-        )}
+            </View>
+          ) : (
+            // Múltiples imágenes - carousel simple
+            <ScrollView
+              ref={scrollViewRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={handleScroll}
+              onScrollBeginDrag={handleScrollBegin}
+              onScrollEndDrag={handleScrollEnd}
+              onMomentumScrollEnd={handleScrollEnd}
+              scrollEventThrottle={16}
+              style={styles.scrollView}
+              bounces={false}
+            >
+              {imageUrls.map((imageUrl, index) => (
+                <View key={index} style={styles.imageWrapper}>
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.image}
+                    contentFit="contain"
+                    transition={200}
+                    cachePolicy="memory-disk"
+                  />
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </Animated.View>
 
-        {/* Page indicators - solo mostrar si hay múltiples imágenes */}
+        {/* Page indicators */}
         {!isSingleImage && (
           <View style={[styles.pageIndicatorContainer, { bottom: insets.bottom + SPACING.xl }]}>
             {imageUrls.map((_, index) => (
@@ -326,7 +277,6 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
                   styles.pageIndicator,
                   {
                     backgroundColor: index === currentIndex ? '#FFFFFF' : 'rgba(255, 255, 255, 0.4)',
-                    opacity: index === currentIndex ? 1 : 0.6,
                   }
                 ]}
               />
@@ -341,15 +291,15 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   background: {
     ...StyleSheet.absoluteFillObject,
-  },
-  backgroundOverlay: {
-    flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.95)',
+  },
+  contentContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   closeButton: {
     position: 'absolute',
@@ -358,7 +308,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -378,8 +328,9 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    width: screenWidth,
   },
-  imageContainer: {
+  imageWrapper: {
     width: screenWidth,
     height: screenHeight,
     justifyContent: 'center',
