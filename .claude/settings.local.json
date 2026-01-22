@@ -22,7 +22,8 @@
       "Bash(chmod:*)",
       "Bash(npm run build:*)",
       "Bash(sips -g all:*)",
-      "Bash(sips:*)"
+      "Bash(sips:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

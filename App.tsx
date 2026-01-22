@@ -7,7 +7,8 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { UserProfileProvider } from './contexts/UserProfileContext';
 import { ScrollProvider } from './contexts/ScrollContext';
-import { PushNotificationProvider } from './contexts/PushNotificationContext';
+// Push notifications deshabilitadas temporalmente - requieren nuevo build nativo
+// import { PushNotificationProvider } from './contexts/PushNotificationContext';
 import MainStackNavigator from './navigation/MainStackNavigator';
 import ErrorBoundary from './components/ErrorBoundary';
 import SplashScreen from './components/SplashScreen';
@@ -102,9 +103,7 @@ export default function App() {
             <UserProfileProvider>
               <ScrollProvider>
                 <NavigationContainer linking={linking} theme={CustomDarkTheme}>
-                  <PushNotificationProvider>
                     <MainStackNavigator />
-                  </PushNotificationProvider>
                 </NavigationContainer>
               </ScrollProvider>
             </UserProfileProvider>

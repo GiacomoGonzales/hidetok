@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "HideTok",
-    "slug": "hidetok",
+    "slug": "hidetok-simple",
     "version": "1.0.0",
     "orientation": "portrait",
     "platforms": [
@@ -53,7 +53,8 @@
         "UIStatusBarStyle": "UIStatusBarStyleLightContent",
         "NSCameraUsageDescription": "HideTok necesita acceso a tu cámara para que puedas tomar fotos y videos para compartir en tus publicaciones.",
         "NSMicrophoneUsageDescription": "HideTok necesita acceso a tu micrófono para grabar audio en tus videos.",
-        "NSPhotoLibraryUsageDescription": "HideTok necesita acceso a tu galería para que puedas seleccionar fotos y videos para compartir."
+        "NSPhotoLibraryUsageDescription": "HideTok necesita acceso a tu galería para que puedas seleccionar fotos y videos para compartir.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "web": {
@@ -72,14 +73,7 @@
       }
     },
     "plugins": [
-      "expo-web-browser",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#8B5CF6"
-        }
-      ]
+      "expo-web-browser"
     ],
     "owner": "giacomogonzales20"
   }
