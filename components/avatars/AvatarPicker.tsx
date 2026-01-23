@@ -127,15 +127,11 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["image"],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: Platform.OS === 'ios', // Solo en iOS funciona bien el editor
         aspect: [1, 1],
         quality: 0.8,
         base64: false,
-        ...(Platform.OS === 'android' && {
-          // En Android, usar selección simple sin crop nativo
-          selectionLimit: 1,
-        }),
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -151,9 +147,10 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
         setUploading(false);
         setShowPicker(false);
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Error picking image:', error);
       setUploading(false);
-      Alert.alert('Error', 'No se pudo seleccionar la imagen');
+      Alert.alert('Error', `No se pudo seleccionar la imagen: ${error?.message || error}`);
     }
   };
 

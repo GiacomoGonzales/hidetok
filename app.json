@@ -69,12 +69,12 @@
     },
     "extra": {
       "eas": {
-        "projectId": "920ff7aa-c0a9-481d-82c0-4e3d57386175"
+        "projectId": "31297521-34c6-4238-af4f-e663953af31f"
       }
     },
     "plugins": [
       "expo-web-browser"
     ],
-    "owner": "giacomogonzales20"
+    "owner": "giacomogonzales"
   }
 }
