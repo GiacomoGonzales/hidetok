@@ -1,4 +1,4 @@
-package com.hidetoksimple.app
+package com.hidetok.app
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

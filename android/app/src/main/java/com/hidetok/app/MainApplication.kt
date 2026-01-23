@@ -1,4 +1,4 @@
-package com.hidetoksimple.app
+package com.hidetok.app
 
 import android.app.Application
 import android.content.res.Configuration

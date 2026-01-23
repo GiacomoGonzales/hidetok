@@ -97,8 +97,10 @@ export interface Comment {
   postId: string;
   userId: string;
   content: string;
+  imageUrl?: string;
   likes: number; // @deprecated - usar agreementCount/disagreementCount
   createdAt: Timestamp;
+  updatedAt?: Timestamp;
   parentCommentId?: string; // Para respuestas a comentarios
 
   // === NUEVO: Sistema de votación para comentarios ===
@@ -622,4 +624,80 @@ export const repostsService = {
       return [];
     }
   },
+};
+
+// === FUNCIONES DE BÚSQUEDA ===
+
+// Buscar usuarios por displayName (búsqueda simple)
+export const searchUsers = async (searchQuery: string, limitCount = 10): Promise<UserProfile[]> => {
+  try {
+    if (!searchQuery || searchQuery.trim().length < 2) return [];
+
+    const searchLower = searchQuery.toLowerCase().trim();
+
+    // Firebase no soporta búsqueda de texto completo, así que obtenemos usuarios y filtramos
+    // En producción se usaría Algolia o Elasticsearch
+    const snapshot = await getDocs(
+      query(collection(db, 'users'), limit(100))
+    );
+
+    const users = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as UserProfile));
+
+    // Filtrar por displayName que contenga el query (case insensitive)
+    const filtered = users.filter(user =>
+      user.displayName?.toLowerCase().includes(searchLower) ||
+      user.bio?.toLowerCase().includes(searchLower)
+    );
+
+    // Ordenar por relevancia (match exacto primero, luego por seguidores)
+    filtered.sort((a, b) => {
+      const aExact = a.displayName?.toLowerCase().startsWith(searchLower) ? 1 : 0;
+      const bExact = b.displayName?.toLowerCase().startsWith(searchLower) ? 1 : 0;
+      if (aExact !== bExact) return bExact - aExact;
+      return (b.followers || 0) - (a.followers || 0);
+    });
+
+    return filtered.slice(0, limitCount);
+  } catch (error) {
+    console.error('Error searching users:', error);
+    return [];
+  }
+};
+
+// Buscar posts por contenido
+export const searchPosts = async (searchQuery: string, limitCount = 10): Promise<Post[]> => {
+  try {
+    if (!searchQuery || searchQuery.trim().length < 2) return [];
+
+    const searchLower = searchQuery.toLowerCase().trim();
+
+    // Firebase no soporta búsqueda de texto completo
+    // Obtenemos posts recientes y filtramos
+    const snapshot = await getDocs(
+      query(
+        collection(db, 'posts'),
+        orderBy('createdAt', 'desc'),
+        limit(200)
+      )
+    );
+
+    const posts = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Post));
+
+    // Filtrar por contenido que contenga el query
+    const filtered = posts.filter(post =>
+      post.content?.toLowerCase().includes(searchLower) ||
+      post.hashtags?.some(tag => tag.toLowerCase().includes(searchLower))
+    );
+
+    return filtered.slice(0, limitCount);
+  } catch (error) {
+    console.error('Error searching posts:', error);
+    return [];
+  }
 };

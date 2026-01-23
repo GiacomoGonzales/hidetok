@@ -482,3 +482,37 @@ export const uploadMessageImageFromUri = async (
     throw error;
   }
 };
+
+// Subir imagen de comentario
+export const uploadCommentImage = async (
+  imageBlob: Blob,
+  userId: string,
+  onProgress?: (progress: UploadProgress) => void
+): Promise<string> => {
+  try {
+    console.log('📤 Subiendo imagen de comentario...');
+    console.log(`📊 Tamaño original: ${(imageBlob.size / 1024).toFixed(1)} KB`);
+
+    // Comprimir imagen antes de subir
+    const compressedBlob = await compressPostImage(imageBlob);
+    console.log(`✅ Comprimida: ${(compressedBlob.size / 1024).toFixed(1)} KB`);
+
+    const timestamp = Date.now();
+    const fileName = `${timestamp}.jpg`;
+    const path = `images/comments/${userId}/${fileName}`;
+
+    const metadata = {
+      contentType: 'image/jpeg',
+      customMetadata: {
+        uploadedBy: userId,
+        uploadDate: new Date().toISOString(),
+        folder: 'comments'
+      }
+    };
+
+    return await storageService.uploadFile(compressedBlob, path, onProgress, metadata);
+  } catch (error) {
+    console.error('Error uploading comment image:', error);
+    throw error;
+  }
+};

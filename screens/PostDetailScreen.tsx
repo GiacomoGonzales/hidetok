@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
@@ -25,6 +26,7 @@ import { useUserById } from '../hooks/useUserById';
 import { useLikes } from '../hooks/useLikes';
 import { Post, Comment, commentsService, postsService, PollOption } from '../services/firestoreService';
 import { notificationService } from '../services/notificationService';
+import { uploadCommentImage } from '../services/storageService';
 import { formatNumber, getRelativeTime } from '../data/mockData';
 import { Timestamp } from 'firebase/firestore';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
@@ -84,6 +86,7 @@ const PostDetailScreen: React.FC = () => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loadingComments, setLoadingComments] = useState(true);
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [commentImage, setCommentImage] = useState<string | null>(null);
   const [userVote, setUserVote] = useState<number | null>(null);
   const [localPoll, setLocalPoll] = useState(post.poll);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -188,14 +191,64 @@ const PostDetailScreen: React.FC = () => {
     console.log('Like comment:', commentId);
   };
 
+  const handlePickCommentImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Permisos necesarios',
+          'Necesitamos acceso a tu galería para seleccionar imágenes'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setCommentImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'No se pudo seleccionar la imagen');
+    }
+  };
+
+  const removeCommentImage = () => {
+    setCommentImage(null);
+  };
+
   const handleCommentSubmit = async () => {
-    if (!commentText.trim() || !user || !post.id || submittingComment) return;
+    if ((!commentText.trim() && !commentImage) || !user || !post.id || submittingComment) return;
 
     try {
       setSubmittingComment(true);
       console.log('💬 Enviando comentario...');
 
       const trimmedContent = commentText.trim();
+
+      // Subir imagen si hay una
+      let imageUrl: string | undefined;
+      if (commentImage) {
+        console.log('📤 Subiendo imagen del comentario...');
+        try {
+          const response = await fetch(commentImage);
+          const blob = await response.blob();
+          imageUrl = await uploadCommentImage(blob, user.uid);
+          console.log('✅ Imagen subida:', imageUrl);
+        } catch (uploadError) {
+          console.error('Error uploading comment image:', uploadError);
+          Alert.alert('Error', 'No se pudo subir la imagen');
+          setSubmittingComment(false);
+          return;
+        }
+      }
+
       const commentData: Omit<Comment, 'id'> = {
         postId: post.id,
         userId: user.uid,
@@ -203,6 +256,8 @@ const PostDetailScreen: React.FC = () => {
         likes: 0,
         createdAt: new Date() as any,
         updatedAt: new Date() as any,
+        // Solo incluir imageUrl si existe (Firebase no acepta undefined)
+        ...(imageUrl && { imageUrl }),
       };
 
       // Crear comentario en Firestore
@@ -238,6 +293,7 @@ const PostDetailScreen: React.FC = () => {
 
       console.log('✅ Comentario enviado');
       setCommentText('');
+      setCommentImage(null);
 
       // Cerrar el teclado
       Keyboard.dismiss();
@@ -690,6 +746,19 @@ const PostDetailScreen: React.FC = () => {
         </View>
       </ScrollView>
 
+      {/* Comment image preview */}
+      {commentImage && (
+        <View style={[styles.commentImagePreview, { backgroundColor: theme.colors.surface }]}>
+          <Image source={{ uri: commentImage }} style={styles.commentImageThumbnail} />
+          <TouchableOpacity
+            style={[styles.removeCommentImageButton, { backgroundColor: 'rgba(0,0,0,0.6)' }]}
+            onPress={removeCommentImage}
+          >
+            <Ionicons name="close" size={16} color="white" />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Comment input */}
       <View style={[styles.commentInputContainer, {
         backgroundColor: theme.colors.background,
@@ -724,12 +793,13 @@ const PostDetailScreen: React.FC = () => {
           />
           <TouchableOpacity
             style={styles.imageButton}
+            onPress={handlePickCommentImage}
             activeOpacity={0.7}
           >
             <Ionicons
               name="image-outline"
               size={ICON_SIZE.md}
-              color={theme.colors.text}
+              color={commentImage ? theme.colors.accent : theme.colors.text}
             />
           </TouchableOpacity>
         </View>
@@ -1002,6 +1072,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 3,
+  },
+  commentImagePreview: {
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+    padding: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  commentImageThumbnail: {
+    width: scale(60),
+    height: scale(60),
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  removeCommentImageButton: {
+    position: 'absolute',
+    top: SPACING.xs,
+    right: SPACING.xs,
+    width: scale(24),
+    height: scale(24),
+    borderRadius: scale(12),
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   pollContainer: {
     marginHorizontal: SPACING.lg,

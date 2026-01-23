@@ -1,6 +1,7 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import ImageViewer from './ImageViewer';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUserById } from '../hooks/useUserById';
 import { Comment } from '../services/firestoreService';
@@ -24,6 +25,7 @@ const CommentCard: React.FC<CommentCardProps> = ({
 }) => {
   const { theme } = useTheme();
   const { userProfile: commentAuthor, loading: loadingAuthor } = useUserById(comment.userId);
+  const [imageViewerVisible, setImageViewerVisible] = useState(false);
 
   const getCommentDate = () => {
     if (!comment.createdAt) return new Date();
@@ -82,9 +84,25 @@ const CommentCard: React.FC<CommentCardProps> = ({
           </Text>
         </View>
 
-        <Text style={[styles.commentText, { color: theme.colors.text }]}>
-          {comment.content}
-        </Text>
+        {comment.content ? (
+          <Text style={[styles.commentText, { color: theme.colors.text }]}>
+            {comment.content}
+          </Text>
+        ) : null}
+
+        {comment.imageUrl && (
+          <TouchableOpacity
+            onPress={() => setImageViewerVisible(true)}
+            activeOpacity={0.9}
+            style={styles.commentImageContainer}
+          >
+            <Image
+              source={{ uri: comment.imageUrl }}
+              style={[styles.commentImage, { backgroundColor: theme.colors.surface }]}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
+        )}
 
         <View style={styles.actions}>
           <TouchableOpacity
@@ -107,6 +125,15 @@ const CommentCard: React.FC<CommentCardProps> = ({
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Image Viewer Modal */}
+      {comment.imageUrl && (
+        <ImageViewer
+          visible={imageViewerVisible}
+          imageUrls={[comment.imageUrl]}
+          onClose={() => setImageViewerVisible(false)}
+        />
+      )}
     </View>
   );
 };
@@ -169,6 +196,16 @@ const styles = StyleSheet.create({
   likeCount: {
     fontSize: FONT_SIZE.xs,
     fontWeight: FONT_WEIGHT.medium,
+  },
+  commentImageContainer: {
+    marginBottom: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+  },
+  commentImage: {
+    width: '100%',
+    height: scale(150),
+    borderRadius: BORDER_RADIUS.md,
   },
 });
 

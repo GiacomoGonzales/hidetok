@@ -14,10 +14,23 @@ import {
   sendPasswordResetEmail
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
-import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 
+// Importación condicional para Google Sign-In nativo
+let GoogleSignin: any = null;
 if (Platform.OS !== 'web') {
+  try {
+    const googleSigninModule = require('@react-native-google-signin/google-signin');
+    GoogleSignin = googleSigninModule.GoogleSignin;
+
+    // Configurar Google Sign-In
+    GoogleSignin.configure({
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
+      offlineAccess: true,
+    });
+  } catch (e) {
+    console.log('Google Sign-In nativo no disponible');
+  }
   WebBrowser.maybeCompleteAuthSession();
 }
 
@@ -141,65 +154,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return;
       }
 
-      // En Mobile (iOS/Android), usar AuthSession con Expo
+      // En Mobile (iOS/Android), usar Google Sign-In nativo
       console.log('📱 Iniciando Google Sign-In en Mobile...');
-      const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
 
-      // Verificar que esté configurado el Client ID
-      if (!googleClientId || googleClientId === 'your_google_client_id_here') {
-        throw new Error('Google Client ID no está configurado. Por favor configura EXPO_PUBLIC_GOOGLE_CLIENT_ID en tu archivo env.local');
+      if (!GoogleSignin) {
+        throw new Error('Google Sign-In no está disponible en esta plataforma');
       }
 
-      // Configuración para Expo
-      const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
+      // Verificar si hay sesión previa
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
-      const request = new AuthSession.AuthRequest({
-        clientId: googleClientId,
-        scopes: ['openid', 'profile', 'email'],
-        redirectUri,
-        responseType: AuthSession.ResponseType.IdToken,
-      });
+      // Iniciar sesión con Google
+      const signInResult = await GoogleSignin.signIn();
+      console.log('📋 Google Sign-In result:', signInResult);
 
-      const result = await request.promptAsync({
-        authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-      });
+      // Obtener el idToken del resultado
+      const idToken = signInResult?.data?.idToken;
 
-      console.log('📋 Google Sign-In result type:', result.type);
+      if (!idToken) {
+        throw new Error('No se pudo obtener el token de Google');
+      }
 
-      if (result.type === 'success' && result.params?.id_token) {
-        const credential = GoogleAuthProvider.credential(result.params.id_token);
-        await signInWithCredential(auth, credential);
-        console.log('✅ Google Sign-In exitoso');
-      } else if (result.type === 'cancel') {
+      // Crear credencial de Firebase con el token
+      const credential = GoogleAuthProvider.credential(idToken);
+      await signInWithCredential(auth, credential);
+      console.log('✅ Google Sign-In exitoso');
+    } catch (error: any) {
+      // Manejar cancelación del usuario
+      if (error?.code === 'SIGN_IN_CANCELLED' || error?.code === '12501') {
         console.log('⚠️ Usuario canceló Google Sign-In');
-        // Usuario canceló, no es un error
         return;
-      } else if (result.type === 'dismiss') {
-        // El modal se cerró - podría ser porque el OAuth completó por redirect
-        // Esperamos un momento para ver si el auth state cambia
-        console.log('📋 Modal cerrado, verificando estado de autenticación...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // Si el usuario ya está autenticado, no es un error
-        if (auth.currentUser) {
-          console.log('✅ Google Sign-In exitoso (via redirect)');
-          return;
-        }
-        // Si no hay usuario, probablemente el usuario cerró el modal
-        console.log('⚠️ Usuario cerró el modal sin autenticarse');
-        return;
-      } else {
-        // Otros tipos de resultado - verificar si hay un token en los params
-        if (result.params?.id_token) {
-          const credential = GoogleAuthProvider.credential(result.params.id_token);
-          await signInWithCredential(auth, credential);
-          console.log('✅ Google Sign-In exitoso');
-        } else {
-          console.log('⚠️ Resultado inesperado:', result.type, result.params);
-          // No lanzar error inmediatamente, el auth state podría cambiar
-        }
       }
-    } catch (error) {
       console.error('❌ Error en Google Sign-In:', error);
       throw error;
     }

@@ -2,6 +2,7 @@
   "expo": {
     "name": "HideTok",
     "slug": "hidetok-simple",
+    "scheme": "hidetok",
     "version": "1.0.0",
     "orientation": "portrait",
     "platforms": [
@@ -73,7 +74,13 @@
       }
     },
     "plugins": [
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.600935858829-v7m2m7j21k2sae85u0cd1mnsuq0vds0b"
+        }
+      ]
     ],
     "owner": "giacomogonzales"
   }

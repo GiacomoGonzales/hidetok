@@ -145,7 +145,7 @@ const CreateScreen: React.FC = () => {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["image"],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsMultipleSelection: true,
         selectionLimit: maxImages - attachedMedia.length,
         quality: 0.8,
@@ -184,7 +184,7 @@ const CreateScreen: React.FC = () => {
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ["image"],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.8,
         aspect: [1, 1],
         allowsEditing: true,

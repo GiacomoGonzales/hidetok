@@ -145,10 +145,9 @@ const MainStackNavigator: React.FC = () => {
       <Stack.Screen
         name="Search"
         options={{
-          presentation: Platform.OS === 'web' ? 'card' : 'modal',
+          presentation: 'card',
           headerShown: false,
           gestureEnabled: true,
-          gestureDirection: 'vertical',
         }}
       >
         {(props) => (
