@@ -98,11 +98,13 @@ const TabNavigator: React.FC = () => {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarBackground: () => (
-          <BlurView
-            intensity={80}
-            tint={theme.dark ? 'dark' : 'light'}
-            style={StyleSheet.absoluteFill}
-          />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.dark ? 'rgba(10, 10, 10, 0.85)' : 'rgba(255, 255, 255, 0.95)' }]}>
+            <BlurView
+              intensity={80}
+              tint={theme.dark ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+          </View>
         ),
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap;

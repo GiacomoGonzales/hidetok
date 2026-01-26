@@ -6,12 +6,13 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Image,
+  Image as RNImage,
   Alert,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,14 +22,79 @@ import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { postsService } from '../services/firestoreService';
 import { uploadPostImage } from '../services/storageService';
-import { useCommunities } from '../hooks/useCommunities';
-import { Community } from '../services/communityService';
+import { communityService, CATEGORY_TAGS } from '../services/communityService';
 import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { Timestamp } from 'firebase/firestore';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, ICON_SIZE } from '../constants/design';
 import { scale } from '../utils/scale';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
+
+// Colores para cada categoría (mismo que en LandingScreen)
+const CATEGORY_COLORS: { [key: string]: string } = {
+  'noticias': '#10B981',
+  'relaciones-amor': '#EC4899',
+  'finanzas-dinero': '#6366F1',
+  'laboral': '#F59E0B',
+  'salud-bienestar': '#22C55E',
+  'entretenimiento': '#F59E0B',
+  'gaming-tech': '#8B5CF6',
+  'educacion-carrera': '#0EA5E9',
+  'deportes': '#EF4444',
+  'confesiones': '#6B7280',
+  'debates-calientes': '#F97316',
+  'viajes-lugares': '#14B8A6',
+  'comida-cocina': '#F472B6',
+  'moda-estilo': '#A855F7',
+  'espiritualidad': '#FBBF24',
+  'anime-manga': '#FF6B9D',
+  'criptomonedas': '#F7931A',
+  'kpop-kdrama': '#FF2D78',
+  // Fallback para comunidades antiguas
+  'gamers': '#8B5CF6',
+  'politica': '#10B981',
+  'religion-filosofia': '#FBBF24',
+  'recreacion': '#14B8A6',
+  'denuncias-injusticias': '#EF4444',
+  'consejos-psicologia': '#EC4899',
+  'gastronomia': '#F472B6',
+  'haters': '#F97316',
+};
+
+const getCategoryColor = (slug: string): string => {
+  return CATEGORY_COLORS[slug] || '#8B5CF6';
+};
+
+// Categorías oficiales (mismo que en LandingScreen)
+const OFFICIAL_CATEGORIES = [
+  { id: 'noticias', name: 'Noticias', icon: 'newspaper-outline', customIcon: require('../assets/icons/category-noticias.png'), slug: 'noticias' },
+  { id: 'relaciones', name: 'Relaciones & Amor', icon: 'heart-outline', customIcon: require('../assets/icons/category-relaciones.png'), slug: 'relaciones-amor' },
+  { id: 'finanzas', name: 'Finanzas & Dinero', icon: 'cash-outline', customIcon: require('../assets/icons/category-trabajo.png'), slug: 'finanzas-dinero' },
+  { id: 'laboral', name: 'Laboral', icon: 'briefcase-outline', customIcon: require('../assets/icons/category-laboral.png'), slug: 'laboral' },
+  { id: 'salud', name: 'Salud & Bienestar', icon: 'fitness-outline', customIcon: require('../assets/icons/category-salud.png'), slug: 'salud-bienestar' },
+  { id: 'entretenimiento', name: 'Entretenimiento', icon: 'film-outline', slug: 'entretenimiento' },
+  { id: 'gaming', name: 'Gaming & Tech', icon: 'game-controller-outline', customIcon: require('../assets/icons/category-gaming.png'), slug: 'gaming-tech' },
+  { id: 'educacion', name: 'Educación & Carrera', icon: 'school-outline', slug: 'educacion-carrera' },
+  { id: 'deportes', name: 'Deportes', icon: 'football-outline', slug: 'deportes' },
+  { id: 'confesiones', name: 'Confesiones', icon: 'eye-off-outline', slug: 'confesiones' },
+  { id: 'debates', name: 'Debates Calientes', icon: 'flame-outline', slug: 'debates-calientes' },
+  { id: 'viajes', name: 'Viajes & Lugares', icon: 'airplane-outline', customIcon: require('../assets/icons/category-viajes.png'), slug: 'viajes-lugares' },
+  { id: 'comida', name: 'Comida & Cocina', icon: 'restaurant-outline', slug: 'comida-cocina' },
+  { id: 'moda', name: 'Moda & Estilo', icon: 'shirt-outline', slug: 'moda-estilo' },
+  { id: 'espiritualidad', name: 'Espiritualidad', icon: 'sparkles-outline', slug: 'espiritualidad' },
+  { id: 'anime', name: 'Anime & Manga', icon: 'sparkles-outline', slug: 'anime-manga' },
+  { id: 'cripto', name: 'Criptomonedas', icon: 'logo-bitcoin', slug: 'criptomonedas' },
+  { id: 'kpop', name: 'K-Pop & K-Drama', icon: 'musical-notes-outline', slug: 'kpop-kdrama' },
+];
+
+// Tipo simple para categorías seleccionables
+interface SelectableCategory {
+  id: string;
+  name: string;
+  icon: string;
+  slug: string;
+}
 
 interface MediaItem {
   type: 'image' | 'video';
@@ -54,16 +120,23 @@ const CreateScreen: React.FC = () => {
   const navigation = useNavigation();
 
   // Communities
-  const { officialCommunities, isLoading: communitiesLoading } = useCommunities(user?.uid);
-  const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(null);
+  const [selectedCommunity, setSelectedCommunity] = useState<SelectableCategory | null>(null);
+  const [userCommunities, setUserCommunities] = useState<SelectableCategory[]>([]);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newCommunityName, setNewCommunityName] = useState('');
+  const [newCommunityDescription, setNewCommunityDescription] = useState('');
+  const [newCommunityIcon, setNewCommunityIcon] = useState('chatbubbles');
+  const [isCreatingCommunity, setIsCreatingCommunity] = useState(false);
 
   const [postText, setPostText] = useState('');
   const [attachedMedia, setAttachedMedia] = useState<MediaItem[]>([]);
   const [isPublishing, setIsPublishing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const [poll, setPoll] = useState<Poll | null>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const maxTextLength = 500;
+  const maxTags = 3;
   const maxImages = 4;
   const maxPollOptions = 4;
   const minPollOptions = 2;
@@ -76,17 +149,100 @@ const CreateScreen: React.FC = () => {
       poll.options.every(opt => opt.text.trim().length > 0)
     : true;
 
-  // Mostrar todas las comunidades oficiales para publicar
-  const getAvailableCommunities = useCallback(() => {
-    return officialCommunities;
-  }, [officialCommunities]);
-
-  // Auto-seleccionar la primera comunidad cuando se cargan
+  // Auto-seleccionar la primera categoría
   useEffect(() => {
-    if (officialCommunities.length > 0 && !selectedCommunity) {
-      setSelectedCommunity(officialCommunities[0]);
+    if (!selectedCommunity) {
+      setSelectedCommunity(OFFICIAL_CATEGORIES[0]);
     }
-  }, [officialCommunities, selectedCommunity]);
+  }, [selectedCommunity]);
+
+  // Cargar categorías de usuarios
+  useEffect(() => {
+    const loadUserCommunities = async () => {
+      try {
+        const communities = await communityService.getUserCommunities();
+        // Mapear a SelectableCategory
+        const mapped: SelectableCategory[] = communities.map(c => ({
+          id: c.id || c.slug,
+          name: c.name,
+          icon: c.icon,
+          slug: c.slug,
+        }));
+        setUserCommunities(mapped);
+      } catch (error) {
+        console.error('Error loading user communities:', error);
+      }
+    };
+    loadUserCommunities();
+  }, []);
+
+  // Resetear tags cuando cambia la categoría
+  useEffect(() => {
+    setSelectedTags([]);
+  }, [selectedCommunity?.id]);
+
+  // Obtener tags disponibles para la categoría seleccionada
+  const getAvailableTags = useCallback(() => {
+    if (!selectedCommunity) return [];
+    return CATEGORY_TAGS[selectedCommunity.slug] || [];
+  }, [selectedCommunity]);
+
+  // Toggle tag selection
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev => {
+      if (prev.includes(tag)) {
+        return prev.filter(t => t !== tag);
+      }
+      if (prev.length >= maxTags) {
+        return prev;
+      }
+      return [...prev, tag];
+    });
+  };
+
+  // Crear nueva categoría
+  const handleCreateCommunity = async () => {
+    if (!user || !newCommunityName.trim()) {
+      Alert.alert('Error', 'Ingresa un nombre para la categoría');
+      return;
+    }
+
+    setIsCreatingCommunity(true);
+    try {
+      await communityService.createCommunity({
+        name: newCommunityName.trim(),
+        description: newCommunityDescription.trim() || `Categoría creada por la comunidad`,
+        icon: newCommunityIcon,
+        rules: ['Se respetuoso', 'No spam'],
+        createdBy: user.uid,
+      });
+
+      Alert.alert(
+        'Categoría creada',
+        'Tu categoría ha sido creada y ya está disponible para usar.',
+        [{ text: 'OK' }]
+      );
+
+      setShowCreateModal(false);
+      setNewCommunityName('');
+      setNewCommunityDescription('');
+      setNewCommunityIcon('chatbubbles');
+
+      // Recargar categorías de usuarios
+      const communities = await communityService.getUserCommunities();
+      const mapped: SelectableCategory[] = communities.map(c => ({
+        id: c.id || c.slug,
+        name: c.name,
+        icon: c.icon,
+        slug: c.slug,
+      }));
+      setUserCommunities(mapped);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'No se pudo crear la categoría');
+    } finally {
+      setIsCreatingCommunity(false);
+    }
+  };
 
   const canPublish = postText.trim().length > 0 && !isTextOverLimit && !isPublishing && isPollValid && selectedCommunity !== null;
 
@@ -310,6 +466,7 @@ const CreateScreen: React.FC = () => {
         // Community data
         communityId: selectedCommunity.id,
         communitySlug: selectedCommunity.slug,
+        tags: selectedTags.length > 0 ? selectedTags : [],
         // Voting system (initialize with 0)
         agreementCount: 0,
         disagreementCount: 0,
@@ -339,9 +496,32 @@ const CreateScreen: React.FC = () => {
       setAttachedMedia([]);
       setUploadProgress({});
       setPoll(null);
+      setSelectedTags([]);
 
-      // Navegar inmediatamente al home
-      navigation.goBack();
+      // Navegar al feed de la categoría para ver la publicación
+      const communitySlug = selectedCommunity.slug;
+      (navigation as any).reset({
+        index: 0,
+        routes: [
+          {
+            name: 'Main',
+            state: {
+              routes: [
+                {
+                  name: 'Home',
+                  state: {
+                    routes: [
+                      { name: 'Landing' },
+                      { name: 'Feed', params: { communitySlug } },
+                    ],
+                    index: 1,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
 
     } catch (error) {
       console.error('Error publishing post:', error);
@@ -688,58 +868,213 @@ const CreateScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Community Selector */}
+      {/* Community Selector con iconos coloridos */}
       <View style={[styles.communitySelector, { borderBottomColor: theme.colors.border }]}>
+        {/* Categorías Oficiales */}
         <Text style={[styles.communitySelectorLabel, { color: theme.colors.textSecondary }]}>
-          Publicar en:
+          Categorías Oficiales
         </Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.communityChipsContainer}
+          contentContainerStyle={styles.communityGridContainer}
         >
-          {getAvailableCommunities().map((community) => (
-            <TouchableOpacity
-              key={community.id}
-              style={[
-                styles.communityChip,
-                {
-                  backgroundColor: selectedCommunity?.id === community.id
-                    ? `${theme.colors.accent}15`
-                    : theme.colors.surface,
-                  borderColor: selectedCommunity?.id === community.id
-                    ? theme.colors.accent
-                    : theme.colors.border,
-                },
-              ]}
-              onPress={() => setSelectedCommunity(community)}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={community.icon as any}
-                size={scale(14)}
-                color={selectedCommunity?.id === community.id ? theme.colors.accent : theme.colors.text}
-              />
-              <Text
+          {OFFICIAL_CATEGORIES.map((category) => {
+            const color = getCategoryColor(category.slug);
+            const isSelected = selectedCommunity?.id === category.id;
+
+            return (
+              <TouchableOpacity
+                key={category.id}
                 style={[
-                  styles.communityChipText,
+                  styles.communityCard,
                   {
-                    color: selectedCommunity?.id === community.id
-                      ? theme.colors.accent
-                      : theme.colors.text,
+                    backgroundColor: theme.colors.card,
+                    borderColor: isSelected ? color : theme.colors.border,
+                    borderWidth: isSelected ? 2 : 1,
                   },
                 ]}
-                numberOfLines={1}
+                onPress={() => setSelectedCommunity(category)}
+                activeOpacity={0.7}
               >
-                {community.name}
-              </Text>
-              {selectedCommunity?.id === community.id && (
-                <Ionicons name="checkmark-circle" size={scale(14)} color={theme.colors.accent} />
-              )}
-            </TouchableOpacity>
-          ))}
+                <View
+                  style={[
+                    styles.communityIconContainer,
+                    category.customIcon ? {} : {
+                      backgroundColor: color,
+                      shadowColor: color,
+                      shadowOffset: { width: 0, height: 3 },
+                      shadowOpacity: 0.4,
+                      shadowRadius: 6,
+                      elevation: 4,
+                    },
+                  ]}
+                >
+                  {category.customIcon ? (
+                    <Image
+                      source={category.customIcon}
+                      style={styles.customCategoryIcon}
+                    />
+                  ) : (
+                    <Ionicons
+                      name={category.icon as any}
+                      size={scale(20)}
+                      color="white"
+                    />
+                  )}
+                </View>
+                <Text
+                  style={[
+                    styles.communityCardText,
+                    { color: theme.colors.text },
+                  ]}
+                  numberOfLines={2}
+                >
+                  {category.name}
+                </Text>
+                {isSelected && (
+                  <View style={[styles.selectedBadge, { backgroundColor: color }]}>
+                    <Ionicons name="checkmark" size={scale(12)} color="white" />
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
+
+        {/* Categorías de la Comunidad */}
+        {userCommunities.length > 0 && (
+          <>
+            <Text style={[styles.communitySelectorLabel, { color: theme.colors.textSecondary, marginTop: SPACING.md }]}>
+              Categorías de la Comunidad
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.communityGridContainer}
+            >
+              {userCommunities.map((community) => {
+                const color = getCategoryColor(community.slug) || '#6B7280';
+                const isSelected = selectedCommunity?.id === community.id;
+
+                return (
+                  <TouchableOpacity
+                    key={community.id}
+                    style={[
+                      styles.communityCard,
+                      {
+                        backgroundColor: theme.colors.card,
+                        borderColor: isSelected ? color : theme.colors.border,
+                        borderWidth: isSelected ? 2 : 1,
+                      },
+                    ]}
+                    onPress={() => setSelectedCommunity(community)}
+                    activeOpacity={0.7}
+                  >
+                    <View
+                      style={[
+                        styles.communityIconContainer,
+                        {
+                          backgroundColor: color,
+                          shadowColor: color,
+                          shadowOffset: { width: 0, height: 3 },
+                          shadowOpacity: 0.4,
+                          shadowRadius: 6,
+                          elevation: 4,
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={community.icon as any}
+                        size={scale(20)}
+                        color="white"
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.communityCardText,
+                        { color: theme.colors.text },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {community.name}
+                    </Text>
+                    {isSelected && (
+                      <View style={[styles.selectedBadge, { backgroundColor: color }]}>
+                        <Ionicons name="checkmark" size={scale(12)} color="white" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </>
+        )}
+
+        {/* Botón Crear Nueva Categoría */}
+        <TouchableOpacity
+          style={[styles.createCategoryButton, { borderColor: theme.colors.border }]}
+          onPress={() => setShowCreateModal(true)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="add-circle-outline" size={scale(20)} color={theme.colors.accent} />
+          <Text style={[styles.createCategoryText, { color: theme.colors.accent }]}>
+            Crear nueva categoría
+          </Text>
+        </TouchableOpacity>
       </View>
+
+      {/* Tags Section */}
+      {selectedCommunity && getAvailableTags().length > 0 && (
+        <View style={[styles.tagsSection, { borderBottomColor: theme.colors.border }]}>
+          <View style={styles.tagsHeader}>
+            <Text style={[styles.tagsLabel, { color: theme.colors.textSecondary }]}>
+              Tags (opcional, máx. {maxTags})
+            </Text>
+            {selectedTags.length > 0 && (
+              <Text style={[styles.tagsCount, { color: theme.colors.accent }]}>
+                {selectedTags.length}/{maxTags}
+              </Text>
+            )}
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tagsScrollContent}
+          >
+            {getAvailableTags().map((tag) => {
+              const isSelected = selectedTags.includes(tag);
+              const color = getCategoryColor(selectedCommunity.slug);
+              return (
+                <TouchableOpacity
+                  key={tag}
+                  style={[
+                    styles.tagChip,
+                    {
+                      backgroundColor: isSelected ? color : theme.colors.surface,
+                      borderColor: isSelected ? color : theme.colors.border,
+                    },
+                  ]}
+                  onPress={() => toggleTag(tag)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.tagChipText,
+                      { color: isSelected ? 'white' : theme.colors.text },
+                    ]}
+                  >
+                    {tag}
+                  </Text>
+                  {isSelected && (
+                    <Ionicons name="checkmark" size={scale(14)} color="white" style={{ marginLeft: scale(4) }} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       <KeyboardAvoidingView
         style={styles.container}
@@ -791,6 +1126,104 @@ const CreateScreen: React.FC = () => {
           {renderToolbar()}
         </View>
       </KeyboardAvoidingView>
+
+      {/* Modal para crear nueva categoría */}
+      <Modal
+        visible={showCreateModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowCreateModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
+                Crear Nueva Categoría
+              </Text>
+              <TouchableOpacity onPress={() => setShowCreateModal(false)}>
+                <Ionicons name="close" size={scale(24)} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.modalSubtitle, { color: theme.colors.textSecondary }]}>
+              Crea una nueva categoría para la comunidad
+            </Text>
+
+            <View style={styles.modalForm}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Nombre</Text>
+              <TextInput
+                style={[styles.modalInput, {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  color: theme.colors.text,
+                }]}
+                placeholder="Ej: Mascotas, Autos, etc."
+                placeholderTextColor={theme.colors.textSecondary}
+                value={newCommunityName}
+                onChangeText={setNewCommunityName}
+                maxLength={30}
+              />
+
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Descripción (opcional)</Text>
+              <TextInput
+                style={[styles.modalInput, styles.modalTextArea, {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  color: theme.colors.text,
+                }]}
+                placeholder="¿De qué trata esta categoría?"
+                placeholderTextColor={theme.colors.textSecondary}
+                value={newCommunityDescription}
+                onChangeText={setNewCommunityDescription}
+                maxLength={150}
+                multiline
+                numberOfLines={3}
+              />
+
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Icono</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.iconSelector}>
+                {['chatbubbles', 'people', 'heart', 'star', 'flash', 'leaf', 'paw', 'car', 'musical-notes', 'camera', 'book', 'game-controller'].map((icon) => (
+                  <TouchableOpacity
+                    key={icon}
+                    style={[
+                      styles.iconOption,
+                      {
+                        backgroundColor: newCommunityIcon === icon ? theme.colors.accent : theme.colors.surface,
+                        borderColor: newCommunityIcon === icon ? theme.colors.accent : theme.colors.border,
+                      },
+                    ]}
+                    onPress={() => setNewCommunityIcon(icon)}
+                  >
+                    <Ionicons
+                      name={icon as any}
+                      size={scale(22)}
+                      color={newCommunityIcon === icon ? 'white' : theme.colors.text}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.createCommunitySubmitButton,
+                {
+                  backgroundColor: newCommunityName.trim() ? theme.colors.accent : theme.colors.surface,
+                  opacity: newCommunityName.trim() ? 1 : 0.5,
+                },
+              ]}
+              onPress={handleCreateCommunity}
+              disabled={!newCommunityName.trim() || isCreatingCommunity}
+            >
+              {isCreatingCommunity ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={styles.createCommunitySubmitText}>Crear categoría</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -837,30 +1270,55 @@ const styles = StyleSheet.create({
   },
   // Community selector
   communitySelector: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.md,
     borderBottomWidth: scale(0.5),
   },
   communitySelectorLabel: {
-    fontSize: FONT_SIZE.xs,
-    marginBottom: SPACING.xs,
-  },
-  communityChipsContainer: {
-    gap: SPACING.sm,
-    paddingVertical: SPACING.xs,
-  },
-  communityChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.full,
-    borderWidth: 1,
-    gap: SPACING.xs,
-  },
-  communityChipText: {
     fontSize: FONT_SIZE.sm,
     fontWeight: FONT_WEIGHT.medium,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+  },
+  communityGridContainer: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  communityCard: {
+    width: scale(80),
+    height: scale(90),
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.sm,
+  },
+  communityIconContainer: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(12),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.xs,
+  },
+  customCategoryIcon: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(12),
+  },
+  communityCardText: {
+    fontSize: scale(10),
+    fontWeight: FONT_WEIGHT.medium,
+    textAlign: 'center',
+    lineHeight: scale(12),
+  },
+  selectedBadge: {
+    position: 'absolute',
+    top: scale(4),
+    right: scale(4),
+    width: scale(18),
+    height: scale(18),
+    borderRadius: scale(9),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Área de composición
   compositionArea: {
@@ -1043,6 +1501,129 @@ const styles = StyleSheet.create({
   pollDurationButtonText: {
     fontSize: FONT_SIZE.sm,
     fontWeight: FONT_WEIGHT.medium,
+  },
+  // Botón crear categoría
+  createCategoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.md,
+    marginHorizontal: SPACING.lg,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.sm,
+  },
+  createCategoryText: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  // Tags section
+  tagsSection: {
+    paddingVertical: SPACING.md,
+    borderBottomWidth: scale(0.5),
+  },
+  tagsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
+  tagsLabel: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  tagsCount: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.semibold,
+  },
+  tagsScrollContent: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.full,
+    borderWidth: 1,
+  },
+  tagChipText: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  // Modal estilos
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: BORDER_RADIUS.xl,
+    borderTopRightRadius: BORDER_RADIUS.xl,
+    padding: SPACING.xl,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZE.xl,
+    fontWeight: FONT_WEIGHT.bold,
+  },
+  modalSubtitle: {
+    fontSize: FONT_SIZE.sm,
+    marginBottom: SPACING.xl,
+  },
+  modalForm: {
+    marginBottom: SPACING.xl,
+  },
+  inputLabel: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
+    marginBottom: SPACING.xs,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    fontSize: FONT_SIZE.base,
+    marginBottom: SPACING.md,
+  },
+  modalTextArea: {
+    minHeight: scale(80),
+    textAlignVertical: 'top',
+  },
+  iconSelector: {
+    flexDirection: 'row',
+    marginBottom: SPACING.md,
+  },
+  iconOption: {
+    width: scale(44),
+    height: scale(44),
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.sm,
+  },
+  createCommunitySubmitButton: {
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createCommunitySubmitText: {
+    color: 'white',
+    fontSize: FONT_SIZE.base,
+    fontWeight: FONT_WEIGHT.semibold,
   },
 });
 

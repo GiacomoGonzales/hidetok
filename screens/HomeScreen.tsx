@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, Animated, ScrollView } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { DocumentSnapshot } from 'firebase/firestore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
@@ -21,6 +22,7 @@ import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS } from '../constants/des
 import { scale } from '../utils/scale';
 
 type HomeScreenNavigationProp = StackNavigationProp<HomeStackParamList>;
+type HomeScreenRouteProp = RouteProp<HomeStackParamList, 'Feed'>;
 
 const HomeScreen: React.FC = () => {
   const { theme } = useTheme();
@@ -28,10 +30,30 @@ const HomeScreen: React.FC = () => {
   const { userProfile } = useUserProfile();
   const { contentMaxWidth, isDesktop } = useResponsive();
   const navigation = useNavigation<HomeScreenNavigationProp>();
+  const route = useRoute<HomeScreenRouteProp>();
+  const insets = useSafeAreaInsets();
+
+  // Obtener communityId o communitySlug de los parametros de navegacion (desde Landing o Create)
+  const paramCommunityId = route.params?.communityId ?? null;
+  const paramCommunitySlug = route.params?.communitySlug ?? null;
+  const isFromLanding = route.name === 'Feed';
 
   // Communities
-  const { officialCommunities, isLoading: communitiesLoading } = useCommunities(user?.uid);
-  const [selectedCommunityId, setSelectedCommunityId] = useState<string | null>(null);
+  const { officialCommunities, isLoading: communitiesLoading, getCommunityBySlug } = useCommunities(user?.uid);
+
+  // Resolver el slug inicial de la comunidad
+  const resolveInitialCommunitySlug = (): string | null => {
+    // Si viene communitySlug directamente, usarlo
+    if (paramCommunitySlug) return paramCommunitySlug;
+    // Si viene communityId, intentar encontrar la comunidad por id o tratarlo como slug
+    if (paramCommunityId) {
+      const community = officialCommunities.find(c => c.id === paramCommunityId || c.slug === paramCommunityId);
+      return community?.slug ?? paramCommunityId; // Usar el paramCommunityId como slug si no encuentra
+    }
+    return null;
+  };
+
+  const [selectedCommunitySlug, setSelectedCommunitySlug] = useState<string | null>(resolveInitialCommunitySlug());
 
   const [refreshing, setRefreshing] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -62,15 +84,28 @@ const HomeScreen: React.FC = () => {
     console.log('Notificaciones - Próximamente');
   };
 
-  // Validar que la comunidad seleccionada exista, si no, resetear a "Todas"
+  // Sincronizar el slug de la comunidad desde los parametros de navegacion
   useEffect(() => {
-    if (selectedCommunityId && !communitiesLoading) {
-      const communityExists = officialCommunities.some(c => c.id === selectedCommunityId);
-      if (!communityExists) {
-        setSelectedCommunityId(null);
+    if (isFromLanding) {
+      if (paramCommunitySlug) {
+        setSelectedCommunitySlug(paramCommunitySlug);
+      } else if (paramCommunityId) {
+        // Si viene communityId, buscar la comunidad y usar su slug
+        const community = officialCommunities.find(c => c.id === paramCommunityId || c.slug === paramCommunityId);
+        setSelectedCommunitySlug(community?.slug ?? paramCommunityId);
       }
     }
-  }, [selectedCommunityId, officialCommunities, communitiesLoading]);
+  }, [paramCommunityId, paramCommunitySlug, isFromLanding, officialCommunities]);
+
+  // Validar que la comunidad seleccionada exista por slug, si no, resetear a "Todas"
+  useEffect(() => {
+    if (selectedCommunitySlug && !communitiesLoading) {
+      const communityExists = officialCommunities.some(c => c.slug === selectedCommunitySlug);
+      if (!communityExists) {
+        setSelectedCommunitySlug(null);
+      }
+    }
+  }, [selectedCommunitySlug, officialCommunities, communitiesLoading]);
 
   // Precargar comunidades en el cache para que PostCard las muestre rápido
   useEffect(() => {
@@ -86,7 +121,7 @@ const HomeScreen: React.FC = () => {
   useEffect(() => {
     loadPosts(isFirstLoad.current);
     isFirstLoad.current = false;
-  }, [selectedCommunityId]);
+  }, [selectedCommunitySlug]);
 
   // Scroll to top cuando se toca el tab de Home estando ya en Home
   // Si ya está arriba, refrescar la página
@@ -113,7 +148,7 @@ const HomeScreen: React.FC = () => {
   }, [navigation]);
 
   const loadPosts = async (isInitial = false, forceRefresh = false) => {
-    const cacheKey = selectedCommunityId || 'all';
+    const cacheKey = selectedCommunitySlug || 'all';
     const cached = postsCache.current.get(cacheKey);
     const now = Date.now();
 
@@ -143,8 +178,8 @@ const HomeScreen: React.FC = () => {
       setError(null);
 
       let result;
-      if (selectedCommunityId) {
-        result = await postsService.getByCommunityIdPaginated(selectedCommunityId, 15);
+      if (selectedCommunitySlug) {
+        result = await postsService.getByCommunitySlugPaginated(selectedCommunitySlug, 15);
       } else {
         result = await postsService.getPublicPostsPaginated(15);
       }
@@ -180,8 +215,8 @@ const HomeScreen: React.FC = () => {
       setLoadingMore(true);
 
       let result;
-      if (selectedCommunityId) {
-        result = await postsService.getByCommunityIdPaginated(selectedCommunityId, 15, lastDoc);
+      if (selectedCommunitySlug) {
+        result = await postsService.getByCommunitySlugPaginated(selectedCommunitySlug, 15, lastDoc);
       } else {
         result = await postsService.getPublicPostsPaginated(15, lastDoc);
       }
@@ -206,13 +241,13 @@ const HomeScreen: React.FC = () => {
     setHasMore(true);
     setLastDoc(null);
 
-    const cacheKey = selectedCommunityId || 'all';
+    const cacheKey = selectedCommunitySlug || 'all';
     const now = Date.now();
 
     try {
       let result;
-      if (selectedCommunityId) {
-        result = await postsService.getByCommunityIdPaginated(selectedCommunityId, 15);
+      if (selectedCommunitySlug) {
+        result = await postsService.getByCommunitySlugPaginated(selectedCommunitySlug, 15);
       } else {
         result = await postsService.getPublicPostsPaginated(15);
       }
@@ -235,7 +270,7 @@ const HomeScreen: React.FC = () => {
     } finally {
       setRefreshing(false);
     }
-  }, [selectedCommunityId]);
+  }, [selectedCommunitySlug]);
 
   const handleComment = (postId: string) => {
     const post = posts.find(p => p.id === postId);
@@ -277,20 +312,20 @@ const HomeScreen: React.FC = () => {
     return officialCommunities.filter(c => c.id && userProfile.joinedCommunities.includes(c.id));
   }, [officialCommunities, userProfile?.joinedCommunities]);
 
-  const handleCommunitySelect = (communityId: string | null) => {
-    console.log('🎯 Community selected:', communityId);
-    setSelectedCommunityId(communityId);
+  const handleCommunitySelect = (communitySlug: string | null) => {
+    console.log('🎯 Community selected:', communitySlug);
+    setSelectedCommunitySlug(communitySlug);
     // Reset pagination
     setLastDoc(null);
     setHasMore(true);
   };
 
   const renderCommunityTab = (community: Community | null, label?: string) => {
-    const isSelected = community?.id ? selectedCommunityId === community.id : selectedCommunityId === null;
+    const isSelected = community?.slug ? selectedCommunitySlug === community.slug : selectedCommunitySlug === null;
 
     return (
       <TouchableOpacity
-        key={community?.id || 'all'}
+        key={community?.slug || 'all'}
         style={[
           styles.communityTab,
           {
@@ -298,7 +333,7 @@ const HomeScreen: React.FC = () => {
             borderColor: isSelected ? theme.colors.accent : theme.colors.border,
           },
         ]}
-        onPress={() => handleCommunitySelect(community?.id || null)}
+        onPress={() => handleCommunitySelect(community?.slug || null)}
         activeOpacity={0.7}
       >
         {community ? (
@@ -363,8 +398,8 @@ const HomeScreen: React.FC = () => {
 
   // Obtener la comunidad seleccionada
   const getSelectedCommunity = () => {
-    if (!selectedCommunityId) return null;
-    return officialCommunities.find(c => c.id === selectedCommunityId);
+    if (!selectedCommunitySlug) return null;
+    return officialCommunities.find(c => c.slug === selectedCommunitySlug);
   };
 
   // Loading state
@@ -405,6 +440,18 @@ const HomeScreen: React.FC = () => {
     );
   }
 
+  // Funcion para volver a la landing
+  const handleBackToLanding = () => {
+    navigation.goBack();
+  };
+
+  // Obtener nombre de la comunidad seleccionada
+  const getSelectedCommunityName = () => {
+    if (!selectedCommunitySlug) return 'Todas las comunidades';
+    const community = officialCommunities.find(c => c.slug === selectedCommunitySlug);
+    return community?.name || 'Comunidad';
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Animated Header - fijo arriba */}
@@ -422,7 +469,24 @@ const HomeScreen: React.FC = () => {
             const { height } = event.nativeEvent.layout;
             setHeaderHeight(height);
           }}>
-            <Header onNotificationsPress={handleNotificationsPress} />
+            {isFromLanding ? (
+              // Header con boton de volver para cuando viene de Landing
+              <View style={[styles.feedHeader, { paddingTop: insets.top + SPACING.sm }]}>
+                <TouchableOpacity
+                  style={styles.backButton}
+                  onPress={handleBackToLanding}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="arrow-back" size={scale(24)} color={theme.colors.text} />
+                </TouchableOpacity>
+                <Text style={[styles.feedHeaderTitle, { color: theme.colors.text }]} numberOfLines={1}>
+                  {getSelectedCommunityName()}
+                </Text>
+                <View style={styles.headerSpacer} />
+              </View>
+            ) : (
+              <Header onNotificationsPress={handleNotificationsPress} />
+            )}
           </View>
 
           <View
@@ -490,10 +554,10 @@ const HomeScreen: React.FC = () => {
           filtering ? null : (
           <View style={styles.emptyState}>
             <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
-              {selectedCommunityId ? 'Sin publicaciones' : '¡Sé el primero en publicar!'}
+              {selectedCommunitySlug ? 'Sin publicaciones' : '¡Sé el primero en publicar!'}
             </Text>
             <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
-              {selectedCommunityId
+              {selectedCommunitySlug
                 ? 'Esta comunidad aún no tiene posts. ¡Sé el primero!'
                 : 'No hay posts aún. Crea el primer post y comienza la conversación.'}
             </Text>
@@ -529,6 +593,25 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 100,
+  },
+  feedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+  },
+  backButton: {
+    padding: SPACING.xs,
+    marginRight: SPACING.sm,
+  },
+  feedHeaderTitle: {
+    flex: 1,
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.semibold,
+    letterSpacing: -0.3,
+  },
+  headerSpacer: {
+    width: scale(32),
   },
   tabContainer: {
     flexDirection: 'row',

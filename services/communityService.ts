@@ -45,17 +45,40 @@ export interface Community {
   warningMessage?: string; // Mensaje de advertencia al entrar
 }
 
+// Tags predefinidos por categoría
+export const CATEGORY_TAGS: { [slug: string]: string[] } = {
+  'noticias': ['Política', 'Internacional', 'Economía', 'Tecnología', 'Deportes', 'Entretenimiento', 'Ciencia', 'Local'],
+  'relaciones-amor': ['Parejas', 'Citas', 'Ruptura', 'Familia', 'Amistad', 'Consejos', 'Experiencias', 'Tóxico'],
+  'finanzas-dinero': ['Inversiones', 'Ahorro', 'Emprendimiento', 'Cripto', 'Impuestos', 'Deudas', 'Presupuesto', 'Ingresos'],
+  'laboral': ['Jefes', 'Compañeros', 'Oficina', 'Empleo', 'Despidos', 'Salario', 'Entrevistas', 'Freelance'],
+  'salud-bienestar': ['Salud mental', 'Fitness', 'Nutrición', 'Autocuidado', 'Ansiedad', 'Depresión', 'Motivación', 'Hábitos'],
+  'entretenimiento': ['Películas', 'Series', 'Música', 'Celebridades', 'Memes', 'Viral', 'Streaming', 'Eventos'],
+  'gaming-tech': ['PC', 'Consolas', 'Mobile', 'Esports', 'Reviews', 'Noticias tech', 'Apps', 'Gadgets'],
+  'educacion-carrera': ['Universidad', 'Cursos', 'Carrera', 'Estudios', 'Becas', 'Consejos', 'Experiencias', 'Oportunidades'],
+  'deportes': ['Fútbol', 'Básquet', 'Tenis', 'F1', 'Boxeo', 'Olimpiadas', 'Fichajes', 'Resultados'],
+  'confesiones': ['Secretos', 'Desahogo', 'Arrepentimiento', 'Culpa', 'Alivio', 'Anónimo', 'Verdades', 'Historias'],
+  'debates-calientes': ['Controversial', 'Unpopular opinion', 'Hot take', 'Debate', 'Polémica', 'Crítica', 'Rant', 'Discusión'],
+  'viajes-lugares': ['Destinos', 'Tips', 'Experiencias', 'Budget', 'Aventura', 'Playas', 'Ciudades', 'Naturaleza'],
+  'comida-cocina': ['Recetas', 'Restaurantes', 'Tips', 'Postres', 'Saludable', 'Rápido', 'Internacional', 'Casero'],
+  'moda-estilo': ['Outfits', 'Tendencias', 'Tips', 'Marcas', 'Casual', 'Formal', 'Accesorios', 'Skincare'],
+  'espiritualidad': ['Religión', 'Meditación', 'Filosofía', 'Creencias', 'Energía', 'Propósito', 'Reflexión', 'Paz'],
+  'anime-manga': ['Shonen', 'Seinen', 'Shojo', 'Recomendaciones', 'Cosplay', 'Noticias', 'Teorías', 'Waifus'],
+  'criptomonedas': ['Bitcoin', 'Ethereum', 'Altcoins', 'Trading', 'NFTs', 'DeFi', 'Noticias', 'Análisis'],
+  'kpop-kdrama': ['Grupos', 'Idols', 'Doramas', 'Comebacks', 'Concerts', 'Noticias', 'Ships', 'Fandom'],
+};
+
 // Comunidades oficiales iniciales
 export const OFFICIAL_COMMUNITIES: Omit<Community, 'id' | 'createdAt' | 'updatedAt'>[] = [
+  // === CATEGORIAS PRINCIPALES ===
   {
-    name: 'Gamers',
-    slug: 'gamers',
-    description: 'Comunidad para amantes de los videojuegos. Comparte tus opiniones sobre juegos, consolas y la industria gaming.',
-    icon: 'game-controller',
+    name: 'Noticias',
+    slug: 'noticias',
+    description: 'Noticias, actualidad, eventos y lo que está pasando en el mundo. Mantente informado.',
+    icon: 'newspaper',
     rules: [
-      { id: '1', text: 'Respeta las opiniones de otros jugadores', order: 1 },
-      { id: '2', text: 'No spoilers sin advertencia', order: 2 },
-      { id: '3', text: 'Evita guerras de consolas innecesarias', order: 3 },
+      { id: '1', text: 'Comparte fuentes confiables', order: 1 },
+      { id: '2', text: 'No desinformación', order: 2 },
+      { id: '3', text: 'Debate con respeto', order: 3 },
     ],
     memberCount: 0,
     postCount: 0,
@@ -64,14 +87,109 @@ export const OFFICIAL_COMMUNITIES: Omit<Community, 'id' | 'createdAt' | 'updated
     status: 'active',
   },
   {
-    name: 'Politica',
-    slug: 'politica',
-    description: 'Debate politico sin censura. Expresa tus opiniones sobre gobierno, leyes y sociedad.',
-    icon: 'business',
+    name: 'Relaciones & Amor',
+    slug: 'relaciones-amor',
+    description: 'Parejas, citas, rupturas, consejos amorosos y temas de familia. Comparte tu experiencia.',
+    icon: 'heart',
     rules: [
-      { id: '1', text: 'Argumenta con hechos, no insultos', order: 1 },
-      { id: '2', text: 'Respeta todas las ideologias', order: 2 },
-      { id: '3', text: 'No incitacion a violencia', order: 3 },
+      { id: '1', text: 'Se empatico y respetuoso', order: 1 },
+      { id: '2', text: 'No juzgues las decisiones de otros', order: 2 },
+      { id: '3', text: 'Respeta la privacidad', order: 3 },
+    ],
+    memberCount: 0,
+    postCount: 0,
+    isOfficial: true,
+    moderators: [],
+    status: 'active',
+  },
+  {
+    name: 'Finanzas & Dinero',
+    slug: 'finanzas-dinero',
+    description: 'Inversiones, ahorro, emprendimiento, finanzas personales. Todo sobre el dinero.',
+    icon: 'cash',
+    rules: [
+      { id: '1', text: 'No consejos financieros como verdad absoluta', order: 1 },
+      { id: '2', text: 'Comparte experiencias reales', order: 2 },
+      { id: '3', text: 'No promociones ni esquemas', order: 3 },
+    ],
+    memberCount: 0,
+    postCount: 0,
+    isOfficial: true,
+    moderators: [],
+    status: 'active',
+  },
+  {
+    name: 'Laboral',
+    slug: 'laboral',
+    description: 'Trabajo, jefes, compañeros, oficina, empleo. Historias y experiencias laborales.',
+    icon: 'briefcase',
+    rules: [
+      { id: '1', text: 'No expongas empresas sin fundamento', order: 1 },
+      { id: '2', text: 'Respeta la privacidad', order: 2 },
+      { id: '3', text: 'Comparte consejos útiles', order: 3 },
+    ],
+    memberCount: 0,
+    postCount: 0,
+    isOfficial: true,
+    moderators: [],
+    status: 'active',
+  },
+  {
+    name: 'Salud & Bienestar',
+    slug: 'salud-bienestar',
+    description: 'Salud mental, fitness, nutricion, autocuidado. Apoyate en la comunidad.',
+    icon: 'fitness',
+    rules: [
+      { id: '1', text: 'No des consejos medicos profesionales', order: 1 },
+      { id: '2', text: 'Se empatico con problemas de salud mental', order: 2 },
+      { id: '3', text: 'No promuevas dietas peligrosas', order: 3 },
+    ],
+    memberCount: 0,
+    postCount: 0,
+    isOfficial: true,
+    moderators: [],
+    status: 'active',
+  },
+  {
+    name: 'Entretenimiento',
+    slug: 'entretenimiento',
+    description: 'Peliculas, series, musica, celebridades, memes. Todo lo que te entretiene.',
+    icon: 'film',
+    rules: [
+      { id: '1', text: 'Usa advertencias de spoilers', order: 1 },
+      { id: '2', text: 'Respeta los gustos de otros', order: 2 },
+    ],
+    memberCount: 0,
+    postCount: 0,
+    isOfficial: true,
+    moderators: [],
+    status: 'active',
+  },
+  {
+    name: 'Gaming & Tech',
+    slug: 'gaming-tech',
+    description: 'Videojuegos, tecnologia, gadgets, apps, internet. Para gamers y techies.',
+    icon: 'game-controller',
+    rules: [
+      { id: '1', text: 'No spoilers sin advertencia', order: 1 },
+      { id: '2', text: 'Evita guerras de consolas innecesarias', order: 2 },
+      { id: '3', text: 'Se constructivo en tus criticas', order: 3 },
+    ],
+    memberCount: 0,
+    postCount: 0,
+    isOfficial: true,
+    moderators: [],
+    status: 'active',
+  },
+  {
+    name: 'Educacion & Carrera',
+    slug: 'educacion-carrera',
+    description: 'Estudios, universidad, cursos, desarrollo profesional. Consejos academicos.',
+    icon: 'school',
+    rules: [
+      { id: '1', text: 'Comparte recursos utiles', order: 1 },
+      { id: '2', text: 'No hagas tareas por otros', order: 2 },
+      { id: '3', text: 'Respeta todas las carreras', order: 3 },
     ],
     memberCount: 0,
     postCount: 0,
@@ -82,10 +200,10 @@ export const OFFICIAL_COMMUNITIES: Omit<Community, 'id' | 'createdAt' | 'updated
   {
     name: 'Deportes',
     slug: 'deportes',
-    description: 'Todo sobre deportes: futbol, basquet, tenis y mas. Comparte analisis, predicciones y opiniones.',
+    description: 'Futbol, basquet, F1, equipos, atletas. Analisis, predicciones y debates.',
     icon: 'football',
     rules: [
-      { id: '1', text: 'Respeta a todos los equipos y aficiones', order: 1 },
+      { id: '1', text: 'Respeta a todos los equipos', order: 1 },
       { id: '2', text: 'No discriminacion', order: 2 },
       { id: '3', text: 'Manten el debate deportivo', order: 3 },
     ],
@@ -96,12 +214,92 @@ export const OFFICIAL_COMMUNITIES: Omit<Community, 'id' | 'createdAt' | 'updated
     status: 'active',
   },
   {
-    name: 'Religion y Filosofia',
-    slug: 'religion-filosofia',
-    description: 'Espacio para discutir creencias, espiritualidad y preguntas existenciales con respeto.',
-    icon: 'book',
+    name: 'Confesiones',
+    slug: 'confesiones',
+    description: 'Secretos, desahogos, experiencias personales anonimas. Sin juicios.',
+    icon: 'eye-off',
     rules: [
-      { id: '1', text: 'Respeta todas las creencias y no creencias', order: 1 },
+      { id: '1', text: 'Respeta el anonimato de todos', order: 1 },
+      { id: '2', text: 'No juzgues, solo escucha', order: 2 },
+      { id: '3', text: 'No expongas informacion personal', order: 3 },
+    ],
+    memberCount: 0,
+    postCount: 0,
+    isOfficial: true,
+    moderators: [],
+    status: 'active',
+  },
+  {
+    name: 'Debates Calientes',
+    slug: 'debates-calientes',
+    description: 'Temas polemicos, opiniones impopulares, controversias. Debate intenso.',
+    icon: 'flame',
+    rules: [
+      { id: '1', text: 'Argumenta, no insultes', order: 1 },
+      { id: '2', text: 'Acepta opiniones diferentes', order: 2 },
+      { id: '3', text: 'No incitacion a odio', order: 3 },
+    ],
+    memberCount: 0,
+    postCount: 0,
+    isOfficial: true,
+    moderators: [],
+    status: 'active',
+    isUnfiltered: true,
+    warningMessage: 'Esta comunidad contiene debates intensos. Entra con mente abierta.',
+  },
+  // === CATEGORIAS ADICIONALES ===
+  {
+    name: 'Viajes & Lugares',
+    slug: 'viajes-lugares',
+    description: 'Destinos, experiencias de viaje, recomendaciones, tips de viajero.',
+    icon: 'airplane',
+    rules: [
+      { id: '1', text: 'Comparte experiencias reales', order: 1 },
+      { id: '2', text: 'Da recomendaciones honestas', order: 2 },
+    ],
+    memberCount: 0,
+    postCount: 0,
+    isOfficial: true,
+    moderators: [],
+    status: 'active',
+  },
+  {
+    name: 'Comida & Cocina',
+    slug: 'comida-cocina',
+    description: 'Recetas, restaurantes, criticas gastronomicas, tips de cocina.',
+    icon: 'restaurant',
+    rules: [
+      { id: '1', text: 'Comparte recetas con instrucciones claras', order: 1 },
+      { id: '2', text: 'Respeta todas las dietas', order: 2 },
+    ],
+    memberCount: 0,
+    postCount: 0,
+    isOfficial: true,
+    moderators: [],
+    status: 'active',
+  },
+  {
+    name: 'Moda & Estilo',
+    slug: 'moda-estilo',
+    description: 'Ropa, tendencias, looks, consejos de estilo. Expresa tu moda.',
+    icon: 'shirt',
+    rules: [
+      { id: '1', text: 'No critiques el estilo de otros', order: 1 },
+      { id: '2', text: 'Se constructivo en tus opiniones', order: 2 },
+    ],
+    memberCount: 0,
+    postCount: 0,
+    isOfficial: true,
+    moderators: [],
+    status: 'active',
+  },
+  {
+    name: 'Espiritualidad',
+    slug: 'espiritualidad',
+    description: 'Religion, filosofia, creencias, preguntas existenciales. Debate con respeto.',
+    icon: 'sparkles',
+    rules: [
+      { id: '1', text: 'Respeta todas las creencias', order: 1 },
       { id: '2', text: 'No proselitismo agresivo', order: 2 },
       { id: '3', text: 'Debate con apertura mental', order: 3 },
     ],
@@ -112,13 +310,14 @@ export const OFFICIAL_COMMUNITIES: Omit<Community, 'id' | 'createdAt' | 'updated
     status: 'active',
   },
   {
-    name: 'Recreacion',
-    slug: 'recreacion',
-    description: 'Hobbies, viajes, entretenimiento y tiempo libre. Comparte tus pasatiempos favoritos.',
-    icon: 'color-palette',
+    name: 'Anime & Manga',
+    slug: 'anime-manga',
+    description: 'Anime, manga, light novels, cosplay. Para otakus y fans del entretenimiento japones.',
+    icon: 'sparkles',
     rules: [
-      { id: '1', text: 'Comparte experiencias positivas', order: 1 },
-      { id: '2', text: 'Se constructivo en tus criticas', order: 2 },
+      { id: '1', text: 'Usa advertencias de spoilers', order: 1 },
+      { id: '2', text: 'Respeta todos los gustos', order: 2 },
+      { id: '3', text: 'No pirateria ni links ilegales', order: 3 },
     ],
     memberCount: 0,
     postCount: 0,
@@ -127,15 +326,14 @@ export const OFFICIAL_COMMUNITIES: Omit<Community, 'id' | 'createdAt' | 'updated
     status: 'active',
   },
   {
-    name: 'Denuncias e Injusticias',
-    slug: 'denuncias-injusticias',
-    description: 'Espacio seguro para denunciar injusticias, abusos y situaciones que deben ser visibilizadas.',
-    icon: 'megaphone',
+    name: 'Criptomonedas',
+    slug: 'criptomonedas',
+    description: 'Bitcoin, altcoins, blockchain, NFTs, trading. Debate sobre el mundo crypto.',
+    icon: 'logo-bitcoin',
     rules: [
-      { id: '1', text: 'Se honesto en tus denuncias', order: 1 },
-      { id: '2', text: 'No difames sin pruebas', order: 2 },
-      { id: '3', text: 'Apoya a las victimas', order: 3 },
-      { id: '4', text: 'No expongas datos personales de terceros', order: 4 },
+      { id: '1', text: 'No consejos financieros como verdad absoluta', order: 1 },
+      { id: '2', text: 'No promocion de scams o esquemas', order: 2 },
+      { id: '3', text: 'Comparte con responsabilidad', order: 3 },
     ],
     memberCount: 0,
     postCount: 0,
@@ -144,53 +342,20 @@ export const OFFICIAL_COMMUNITIES: Omit<Community, 'id' | 'createdAt' | 'updated
     status: 'active',
   },
   {
-    name: 'Consejos y Psicologia',
-    slug: 'consejos-psicologia',
-    description: 'Pide consejos, comparte experiencias y apoya a otros. Salud mental y bienestar emocional.',
-    icon: 'heart',
+    name: 'K-Pop & K-Drama',
+    slug: 'kpop-kdrama',
+    description: 'K-pop, doramas coreanos, idols, cultura coreana. Para fans del hallyu.',
+    icon: 'musical-notes',
     rules: [
-      { id: '1', text: 'Se empatico y comprensivo', order: 1 },
-      { id: '2', text: 'No des consejos medicos profesionales', order: 2 },
-      { id: '3', text: 'Respeta la privacidad de todos', order: 3 },
+      { id: '1', text: 'Respeta a todos los artistas y fandoms', order: 1 },
+      { id: '2', text: 'No fanwars ni toxicidad', order: 2 },
+      { id: '3', text: 'Usa advertencias de spoilers para dramas', order: 3 },
     ],
     memberCount: 0,
     postCount: 0,
     isOfficial: true,
     moderators: [],
     status: 'active',
-  },
-  {
-    name: 'Gastronomia',
-    slug: 'gastronomia',
-    description: 'Recetas, restaurantes, criticas gastronomicas y todo sobre comida.',
-    icon: 'restaurant',
-    rules: [
-      { id: '1', text: 'Comparte recetas con instrucciones claras', order: 1 },
-      { id: '2', text: 'Respeta todas las dietas y preferencias', order: 2 },
-    ],
-    memberCount: 0,
-    postCount: 0,
-    isOfficial: true,
-    moderators: [],
-    status: 'active',
-  },
-  {
-    name: 'Haters',
-    slug: 'haters',
-    description: 'Contenedor de toxicidad. Desahogate aqui. Contenido sin filtrar.',
-    icon: 'flame',
-    rules: [
-      { id: '1', text: 'No amenazas reales de violencia', order: 1 },
-      { id: '2', text: 'No contenido ilegal', order: 2 },
-      { id: '3', text: 'Lo que pasa en Haters, se queda en Haters', order: 3 },
-    ],
-    memberCount: 0,
-    postCount: 0,
-    isOfficial: true,
-    moderators: [],
-    status: 'active',
-    isUnfiltered: true,
-    warningMessage: '⚠️ Esta comunidad contiene contenido sin filtrar. Entra bajo tu propio riesgo.',
   },
 ];
 
@@ -247,6 +412,75 @@ export const communityService = {
       // Fallback: obtener todas y filtrar en JS (no requiere índice)
       console.log('🔄 Usando fallback sin índice compuesto...');
       return communityService.getAllCommunitiesFallback();
+    }
+  },
+
+  // Obtener comunidades creadas por usuarios (no oficiales, activas)
+  getUserCommunities: async (): Promise<Community[]> => {
+    try {
+      const snapshot = await getDocs(collection(db, 'communities'));
+      const allCommunities = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Community));
+
+      // Filtrar: no oficiales y activas
+      return allCommunities
+        .filter(c => !c.isOfficial && c.status === 'active')
+        .sort((a, b) => b.memberCount - a.memberCount);
+    } catch (error) {
+      console.error('Error getting user communities:', error);
+      return [];
+    }
+  },
+
+  // Obtener comunidades pendientes de aprobación (para admin)
+  getPendingCommunities: async (): Promise<Community[]> => {
+    try {
+      const snapshot = await getDocs(collection(db, 'communities'));
+      const allCommunities = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Community));
+
+      return allCommunities
+        .filter(c => c.status === 'pending')
+        .sort((a, b) => {
+          const aTime = a.createdAt?.toMillis?.() || 0;
+          const bTime = b.createdAt?.toMillis?.() || 0;
+          return bTime - aTime;
+        });
+    } catch (error) {
+      console.error('Error getting pending communities:', error);
+      return [];
+    }
+  },
+
+  // Aprobar una comunidad (para admin)
+  approveCommunity: async (communityId: string): Promise<void> => {
+    try {
+      const communityRef = doc(db, 'communities', communityId);
+      await updateDoc(communityRef, {
+        status: 'active',
+        updatedAt: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error('Error approving community:', error);
+      throw error;
+    }
+  },
+
+  // Rechazar una comunidad (para admin)
+  rejectCommunity: async (communityId: string): Promise<void> => {
+    try {
+      const communityRef = doc(db, 'communities', communityId);
+      await updateDoc(communityRef, {
+        status: 'rejected',
+        updatedAt: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error('Error rejecting community:', error);
+      throw error;
     }
   },
 
@@ -396,8 +630,8 @@ export const communityService = {
     }
   },
 
-  // Obtener comunidades del usuario
-  getUserCommunities: async (userId: string): Promise<Community[]> => {
+  // Obtener comunidades a las que el usuario se ha unido
+  getJoinedCommunities: async (userId: string): Promise<Community[]> => {
     try {
       // Obtener el usuario para ver sus comunidades
       const userQuery = query(
@@ -468,7 +702,7 @@ export const communityService = {
         isOfficial: false,
         moderators: [data.createdBy],
         createdBy: data.createdBy,
-        status: 'pending', // Requiere aprobación (o 'active' para auto-aprobar)
+        status: 'active', // Categorías creadas por usuarios quedan activas inmediatamente
       };
 
       const docRef = await addDoc(collection(db, 'communities'), communityData);

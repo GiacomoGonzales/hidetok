@@ -45,6 +45,7 @@ export interface Post {
   // === NUEVO: Sistema de comunidades ===
   communityId?: string; // ID de la comunidad (requerido para nuevos posts)
   communitySlug?: string; // Slug para navegación rápida
+  tags?: string[]; // Tags/temas seleccionados por el usuario
 
   // === NUEVO: Sistema de votación (% de acuerdo) ===
   agreementCount: number; // Votos "de acuerdo"
@@ -424,13 +425,26 @@ export const postsService = {
     return posts;
   },
 
-  // Obtener posts de una comunidad con paginación
+  // Obtener posts de una comunidad con paginación (por communityId)
   getByCommunityIdPaginated: async (communityId: string, limitCount = 20, lastDoc?: DocumentSnapshot) => {
     const result = await firestoreService.getManyPaginated<Post>(
       'posts',
       limitCount,
       lastDoc,
       [{ field: 'communityId', operator: '==', value: communityId }],
+      'createdAt',
+      'desc'
+    );
+    return result;
+  },
+
+  // Obtener posts de una comunidad con paginación (por communitySlug)
+  getByCommunitySlugPaginated: async (communitySlug: string, limitCount = 20, lastDoc?: DocumentSnapshot) => {
+    const result = await firestoreService.getManyPaginated<Post>(
+      'posts',
+      limitCount,
+      lastDoc,
+      [{ field: 'communitySlug', operator: '==', value: communitySlug }],
       'createdAt',
       'desc'
     );
