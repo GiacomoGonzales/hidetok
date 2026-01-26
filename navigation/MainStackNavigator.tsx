@@ -13,6 +13,8 @@ import PostDetailScreen from '../screens/PostDetailScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import CommunityScreen from '../screens/CommunityScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
+import LoginScreen from '../screens/LoginScreen';
+import RegisterScreen from '../screens/RegisterScreen';
 import AuthStackNavigator from './AuthStackNavigator';
 import Sidebar from '../components/Sidebar';
 import RightSidebar from '../components/RightSidebar';
@@ -33,6 +35,11 @@ export type MainStackParamList = {
   Community: {
     communityId: string;
   };
+  Auth: {
+    screen?: 'Login' | 'Register';
+  } | undefined;
+  Login: undefined;
+  Register: undefined;
 };
 
 const Stack = createStackNavigator<MainStackParamList>();
@@ -51,9 +58,9 @@ const MainStackNavigator: React.FC = () => {
     }
   }, [authLoading, isInitialLoad]);
 
-  // Mostrar loading mientras se verifica la autenticación o el perfil
-  // O durante la carga inicial para evitar flash de login
-  if (authLoading || (user && profileLoading) || isInitialLoad) {
+  // Mostrar loading mientras se verifica la autenticación
+  // O durante la carga inicial para evitar flash
+  if (authLoading || isInitialLoad) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: '#0A0A0A' }]}>
         <ActivityIndicator size="large" color="#8B5CF6" />
@@ -61,21 +68,19 @@ const MainStackNavigator: React.FC = () => {
     );
   }
 
-  // Si no hay usuario autenticado, mostrar pantallas de autenticación
-  if (!user) {
-    return <AuthStackNavigator />;
-  }
-
   // Si el usuario está autenticado pero necesita completar el onboarding
   // (perfil sin displayName configurado, creado recientemente, o sin comunidades seleccionadas)
-  const needsOnboarding = !userProfile?.displayName ||
+  const needsOnboarding = user && userProfile && (
+    !userProfile?.displayName ||
     userProfile.displayName === user.email?.split('@')[0] ||
     userProfile.displayName === 'Usuario Anónimo' ||
-    !userProfile.hasCompletedCommunityOnboarding;
+    !userProfile.hasCompletedCommunityOnboarding
+  );
 
   console.log('🧭 Navigation check:', {
+    user: user ? 'exists' : 'null',
     displayName: userProfile?.displayName,
-    email: user.email,
+    email: user?.email,
     hasCompletedCommunityOnboarding: userProfile?.hasCompletedCommunityOnboarding,
     joinedCommunities: userProfile?.joinedCommunities?.length,
     needsOnboarding,
@@ -85,7 +90,8 @@ const MainStackNavigator: React.FC = () => {
     return <OnboardingScreen />;
   }
 
-  // Usuario autenticado, mostrar la app principal
+  // Mostrar la app principal - tanto para usuarios autenticados como no autenticados
+  // La landing page se mostrará y los botones de login/register estarán disponibles
   return (
     <Stack.Navigator
       screenOptions={{
@@ -221,6 +227,22 @@ const MainStackNavigator: React.FC = () => {
         component={CommunityScreen}
         options={{
           presentation: 'card',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="Login"
+        component={LoginScreen}
+        options={{
+          presentation: 'modal',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="Register"
+        component={RegisterScreen}
+        options={{
+          presentation: 'modal',
           headerShown: false,
         }}
       />

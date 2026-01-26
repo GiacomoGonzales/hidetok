@@ -464,9 +464,7 @@ const OnboardingScreen: React.FC = () => {
           <View style={[styles.footer, {
             backgroundColor: theme.colors.background,
             borderTopColor: theme.colors.border,
-            paddingBottom: Platform.OS === 'android'
-              ? scale(24)
-              : (insets.bottom || scale(16)),
+            paddingBottom: Math.max(insets.bottom, scale(16)) + scale(8),
           }]}>
             {step > 1 && (
               <TouchableOpacity

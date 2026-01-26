@@ -54,3 +54,4 @@ ui-debug.log
 env.local
 .env.production
 ios/
+.vercel

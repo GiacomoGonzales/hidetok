@@ -73,9 +73,9 @@ export function useCommunities(userId?: string): UseCommunitiesReturn {
       const official = allCommunities.filter(c => c.isOfficial);
       setOfficialCommunities(official);
 
-      // Cargar comunidades del usuario si está autenticado
+      // Cargar comunidades a las que el usuario se ha unido
       if (userId) {
-        const userComms = await communityService.getUserCommunities(userId);
+        const userComms = await communityService.getJoinedCommunities(userId);
         setUserCommunities(userComms);
       }
     } catch (err) {
