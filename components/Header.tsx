@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useScroll } from '../contexts/ScrollContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { notificationService } from '../services/notificationService';
 import { SPACING, ICON_SIZE, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS } from '../constants/design';
@@ -12,14 +13,14 @@ import { scale } from '../utils/scale';
 
 interface HeaderProps {
   onNotificationsPress?: () => void;
-  showMessagesIcon?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ onNotificationsPress, showMessagesIcon = false }) => {
+const Header: React.FC<HeaderProps> = ({ onNotificationsPress }) => {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { triggerScrollToTop } = useScroll();
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [unreadCount, setUnreadCount] = useState(0);
 
   // Suscripción en tiempo real al conteo de notificaciones no leídas
@@ -40,7 +41,18 @@ const Header: React.FC<HeaderProps> = ({ onNotificationsPress, showMessagesIcon 
   }, [user]);
 
   const handleLogoPress = () => {
+    // Trigger scroll to top
+    triggerScrollToTop();
+    // Also navigate to Home in case we're not there
     navigation.navigate('Home' as never);
+  };
+
+  const handleLoginPress = () => {
+    // Navigate to login screen
+    const parent = navigation.getParent()?.getParent();
+    if (parent) {
+      parent.navigate('Login');
+    }
   };
 
   return (
@@ -66,40 +78,40 @@ const Header: React.FC<HeaderProps> = ({ onNotificationsPress, showMessagesIcon 
             />
           </TouchableOpacity>
 
-          {/* Center Icon - Messages */}
-          {showMessagesIcon && (
-            <View style={styles.centerIcon}>
-              <Ionicons
-                name="chatbubbles"
-                size={scale(22)}
-                color={theme.colors.accent}
-                style={{ opacity: 0.7 }}
-              />
-            </View>
-          )}
-
           {/* Actions */}
           <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={onNotificationsPress}
-              activeOpacity={0.7}
-            >
-              <View>
-                <Ionicons
-                  name={unreadCount > 0 ? "notifications" : "notifications-outline"}
-                  size={ICON_SIZE.lg}
-                  color={unreadCount > 0 ? theme.colors.accent : theme.colors.text}
-                />
-                {unreadCount > 0 && (
-                  <View style={[styles.badge, { backgroundColor: theme.colors.accent }]}>
-                    <Text style={styles.badgeText}>
-                      {unreadCount > 99 ? '99+' : unreadCount}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </TouchableOpacity>
+            {user ? (
+              // Usuario autenticado: mostrar notificaciones
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={onNotificationsPress}
+                activeOpacity={0.7}
+              >
+                <View>
+                  <Ionicons
+                    name={unreadCount > 0 ? "notifications" : "notifications-outline"}
+                    size={ICON_SIZE.lg}
+                    color={unreadCount > 0 ? theme.colors.accent : theme.colors.text}
+                  />
+                  {unreadCount > 0 && (
+                    <View style={[styles.badge, { backgroundColor: theme.colors.accent }]}>
+                      <Text style={styles.badgeText}>
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            ) : (
+              // Usuario no autenticado: mostrar botón de iniciar sesión
+              <TouchableOpacity
+                style={[styles.loginButton, { backgroundColor: theme.colors.accent }]}
+                onPress={handleLoginPress}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.loginButtonText}>Iniciar sesión</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -121,14 +133,6 @@ const styles = StyleSheet.create({
   logo: {
     height: scale(28),
     width: scale(100),
-  },
-  centerIcon: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    pointerEvents: 'none',
   },
   actions: {
     flexDirection: 'row',
@@ -153,6 +157,16 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: scale(10),
     fontWeight: FONT_WEIGHT.bold,
+  },
+  loginButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  loginButtonText: {
+    color: 'white',
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.semibold,
   },
 });
 

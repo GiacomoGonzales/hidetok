@@ -12,6 +12,8 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Keyboard,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,7 +22,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import AvatarPicker from '../components/avatars/AvatarPicker';
-import CommunitySelector from '../components/CommunitySelector';
 import { uploadProfileImageFromUri } from '../services/storageService';
 import { scale } from '../utils/scale';
 
@@ -34,12 +35,18 @@ const OnboardingScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState(1);
+  const [realName, setRealName] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [birthDay, setBirthDay] = useState('');
+  const [birthMonth, setBirthMonth] = useState('');
+  const [birthYear, setBirthYear] = useState('');
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [dateModalType, setDateModalType] = useState<'day' | 'month' | 'year'>('day');
+  const [gender, setGender] = useState<'male' | 'female' | 'other' | null>(null);
   const [bio, setBio] = useState('');
   const [selectedAvatarType, setSelectedAvatarType] = useState<'predefined' | 'custom'>('predefined');
   const [selectedAvatarId, setSelectedAvatarId] = useState('male');
   const [customAvatarUri, setCustomAvatarUri] = useState<string | null>(null);
-  const [selectedCommunities, setSelectedCommunities] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [completed, setCompleted] = useState(false);
 
@@ -62,8 +69,89 @@ const OnboardingScreen: React.FC = () => {
     };
   }, []);
 
+  const maxRealNameLength = 50;
   const maxDisplayNameLength = 30;
   const maxBioLength = 150;
+
+  // Año máximo: hace 13 años (edad mínima)
+  const currentYear = new Date().getFullYear();
+  const maxYear = currentYear - 13;
+  const minYear = currentYear - 120;
+
+  const months = [
+    { value: '01', label: 'Enero' },
+    { value: '02', label: 'Febrero' },
+    { value: '03', label: 'Marzo' },
+    { value: '04', label: 'Abril' },
+    { value: '05', label: 'Mayo' },
+    { value: '06', label: 'Junio' },
+    { value: '07', label: 'Julio' },
+    { value: '08', label: 'Agosto' },
+    { value: '09', label: 'Septiembre' },
+    { value: '10', label: 'Octubre' },
+    { value: '11', label: 'Noviembre' },
+    { value: '12', label: 'Diciembre' },
+  ];
+
+  const days = Array.from({ length: 31 }, (_, i) => ({
+    value: (i + 1).toString().padStart(2, '0'),
+    label: (i + 1).toString(),
+  }));
+
+  const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => ({
+    value: (maxYear - i).toString(),
+    label: (maxYear - i).toString(),
+  }));
+
+  const getMonthLabel = (value: string) => {
+    const month = months.find(m => m.value === value);
+    return month ? month.label : '';
+  };
+
+  const openDateModal = (type: 'day' | 'month' | 'year') => {
+    setDateModalType(type);
+    setShowDateModal(true);
+  };
+
+  const selectDateValue = (value: string) => {
+    if (dateModalType === 'day') {
+      setBirthDay(value);
+    } else if (dateModalType === 'month') {
+      setBirthMonth(value);
+    } else {
+      setBirthYear(value);
+    }
+    setShowDateModal(false);
+  };
+
+  const getDateModalData = () => {
+    switch (dateModalType) {
+      case 'day':
+        return days;
+      case 'month':
+        return months;
+      case 'year':
+        return years;
+    }
+  };
+
+  const getDateModalTitle = () => {
+    switch (dateModalType) {
+      case 'day':
+        return 'Día';
+      case 'month':
+        return 'Mes';
+      case 'year':
+        return 'Año';
+    }
+  };
+
+  const getBirthDateISO = () => {
+    if (birthDay && birthMonth && birthYear) {
+      return `${birthYear}-${birthMonth}-${birthDay}`;
+    }
+    return null;
+  };
 
   const handleAvatarSelect = (avatarData: {
     type: 'predefined' | 'custom';
@@ -82,6 +170,15 @@ const OnboardingScreen: React.FC = () => {
 
   const handleContinue = async () => {
     if (step === 1) {
+      // Validar nombre real
+      if (!realName.trim()) {
+        Alert.alert('Nombre requerido', 'Por favor ingresa tu nombre para continuar');
+        return;
+      }
+      if (realName.trim().length < 2) {
+        Alert.alert('Nombre muy corto', 'Tu nombre debe tener al menos 2 caracteres');
+        return;
+      }
       // Validar alias
       if (!displayName.trim()) {
         Alert.alert('Alias requerido', 'Por favor ingresa un alias para continuar');
@@ -91,35 +188,35 @@ const OnboardingScreen: React.FC = () => {
         Alert.alert('Alias muy corto', 'Tu alias debe tener al menos 3 caracteres');
         return;
       }
-      setStep(2);
-    } else if (step === 2) {
-      // Ir al paso 3 (selección de comunidades)
-      setStep(3);
-    } else if (step === 3) {
-      // Validar comunidades
-      if (selectedCommunities.length < 1) {
-        Alert.alert('Comunidades requeridas', 'Por favor selecciona al menos una comunidad');
+      // Validar fecha de nacimiento
+      if (!birthDay || !birthMonth || !birthYear) {
+        Alert.alert('Fecha requerida', 'Por favor ingresa tu fecha de nacimiento completa');
         return;
       }
-
+      // Validar género
+      if (!gender) {
+        Alert.alert('Género requerido', 'Por favor selecciona tu género');
+        return;
+      }
+      setStep(2);
+    } else if (step === 2) {
       // Guardar perfil completo
       if (!user) return;
 
       setUploading(true);
       try {
         let updateData: any = {
+          realName: realName.trim(),
           displayName: displayName.trim(),
+          birthDate: getBirthDateISO(),
+          gender: gender,
           bio: bio.trim(),
           avatarType: selectedAvatarType,
-          joinedCommunities: selectedCommunities,
-          primaryCommunity: selectedCommunities[0],
           hasCompletedCommunityOnboarding: true,
         };
 
         // Si es avatar personalizado, subir imagen
         if (selectedAvatarType === 'custom' && customAvatarUri) {
-          const response = await fetch(customAvatarUri);
-          const blob = await response.blob();
           const photoURL = await uploadProfileImageFromUri(customAvatarUri, user.uid);
           updateData.photoURL = photoURL;
         } else {
@@ -167,17 +264,9 @@ const OnboardingScreen: React.FC = () => {
           styles.stepDot,
           { backgroundColor: step >= 2 ? theme.colors.accent : theme.colors.border }
         ]} />
-        <View style={[
-          styles.stepLine,
-          { backgroundColor: step >= 3 ? theme.colors.accent : theme.colors.border }
-        ]} />
-        <View style={[
-          styles.stepDot,
-          { backgroundColor: step >= 3 ? theme.colors.accent : theme.colors.border }
-        ]} />
       </View>
       <Text style={[styles.stepText, { color: theme.colors.textSecondary }]}>
-        Paso {step} de 3
+        Paso {step} de 2
       </Text>
     </View>
   );
@@ -197,41 +286,36 @@ const OnboardingScreen: React.FC = () => {
         </Text>
       </View>
 
-      {/* Features */}
-      <View style={styles.featuresContainer}>
-        <View style={styles.feature}>
-          <View style={[styles.featureIcon, { backgroundColor: `${theme.colors.accent}15` }]}>
-            <Ionicons name="person-outline" size={18} color={theme.colors.accent} />
-          </View>
-          <Text style={[styles.featureText, { color: theme.colors.text }]}>
-            Comparte sin revelar tu identidad
-          </Text>
-        </View>
-        <View style={styles.feature}>
-          <View style={[styles.featureIcon, { backgroundColor: `${theme.colors.accent}15` }]}>
-            <Ionicons name="lock-closed-outline" size={18} color={theme.colors.accent} />
-          </View>
-          <Text style={[styles.featureText, { color: theme.colors.text }]}>
-            Tus datos están protegidos
-          </Text>
-        </View>
-        <View style={styles.feature}>
-          <View style={[styles.featureIcon, { backgroundColor: `${theme.colors.accent}15` }]}>
-            <Ionicons name="chatbubbles-outline" size={18} color={theme.colors.accent} />
-          </View>
-          <Text style={[styles.featureText, { color: theme.colors.text }]}>
-            Conversaciones auténticas
-          </Text>
-        </View>
+      {/* Nombre Real (Privado) */}
+      <View style={styles.inputSection}>
+        <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
+          Tu nombre
+        </Text>
+        <Text style={[styles.inputHint, { color: theme.colors.textSecondary }]}>
+          Este nombre es privado y no se mostrará a otros usuarios.
+        </Text>
+        <TextInput
+          style={[styles.input, {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            color: theme.colors.text,
+          }]}
+          placeholder="Tu nombre real"
+          placeholderTextColor={theme.colors.textSecondary}
+          value={realName}
+          onChangeText={setRealName}
+          maxLength={maxRealNameLength}
+          autoCapitalize="words"
+        />
       </View>
 
-      {/* Input Section */}
+      {/* Alias (Público) */}
       <View style={styles.inputSection}>
         <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
           Elige tu alias
         </Text>
         <Text style={[styles.inputHint, { color: theme.colors.textSecondary }]}>
-          Este será tu nombre en HideTok. No uses tu nombre real.
+          Este será tu nombre público en HideTok. No uses tu nombre real.
         </Text>
         <TextInput
           style={[styles.input, {
@@ -244,16 +328,149 @@ const OnboardingScreen: React.FC = () => {
           value={displayName}
           onChangeText={setDisplayName}
           maxLength={maxDisplayNameLength}
-          onFocus={() => {
-            // Scroll hacia abajo cuando el input recibe focus
-            setTimeout(() => {
-              scrollViewRef.current?.scrollToEnd({ animated: true });
-            }, 100);
-          }}
         />
         <Text style={[styles.charCounter, { color: theme.colors.textSecondary }]}>
           {displayName.length}/{maxDisplayNameLength}
         </Text>
+      </View>
+
+      {/* Fecha de Nacimiento */}
+      <View style={styles.inputSection}>
+        <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
+          Fecha de nacimiento
+        </Text>
+        <Text style={[styles.inputHint, { color: theme.colors.textSecondary }]}>
+          Debes tener al menos 13 años para usar HideTok.
+        </Text>
+        <View style={styles.dateSelectorsRow}>
+          {/* Día */}
+          <TouchableOpacity
+            style={[styles.dateSelector, {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            }]}
+            onPress={() => openDateModal('day')}
+          >
+            <Text style={[
+              styles.dateSelectorText,
+              { color: birthDay ? theme.colors.text : theme.colors.textSecondary }
+            ]}>
+              {birthDay || 'Día'}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+
+          {/* Mes */}
+          <TouchableOpacity
+            style={[styles.dateSelector, styles.dateSelectorMonth, {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            }]}
+            onPress={() => openDateModal('month')}
+          >
+            <Text style={[
+              styles.dateSelectorText,
+              { color: birthMonth ? theme.colors.text : theme.colors.textSecondary }
+            ]}>
+              {birthMonth ? getMonthLabel(birthMonth) : 'Mes'}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+
+          {/* Año */}
+          <TouchableOpacity
+            style={[styles.dateSelector, {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            }]}
+            onPress={() => openDateModal('year')}
+          >
+            <Text style={[
+              styles.dateSelectorText,
+              { color: birthYear ? theme.colors.text : theme.colors.textSecondary }
+            ]}>
+              {birthYear || 'Año'}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Género */}
+      <View style={styles.inputSection}>
+        <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
+          Género
+        </Text>
+        <View style={styles.genderContainer}>
+          <TouchableOpacity
+            style={[
+              styles.genderOption,
+              {
+                backgroundColor: gender === 'male' ? theme.colors.accent : theme.colors.surface,
+                borderColor: gender === 'male' ? theme.colors.accent : theme.colors.border,
+              }
+            ]}
+            onPress={() => setGender('male')}
+          >
+            <Ionicons
+              name="male"
+              size={20}
+              color={gender === 'male' ? 'white' : theme.colors.text}
+            />
+            <Text style={[
+              styles.genderText,
+              { color: gender === 'male' ? 'white' : theme.colors.text }
+            ]}>
+              Hombre
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.genderOption,
+              {
+                backgroundColor: gender === 'female' ? theme.colors.accent : theme.colors.surface,
+                borderColor: gender === 'female' ? theme.colors.accent : theme.colors.border,
+              }
+            ]}
+            onPress={() => setGender('female')}
+          >
+            <Ionicons
+              name="female"
+              size={20}
+              color={gender === 'female' ? 'white' : theme.colors.text}
+            />
+            <Text style={[
+              styles.genderText,
+              { color: gender === 'female' ? 'white' : theme.colors.text }
+            ]}>
+              Mujer
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.genderOption,
+              {
+                backgroundColor: gender === 'other' ? theme.colors.accent : theme.colors.surface,
+                borderColor: gender === 'other' ? theme.colors.accent : theme.colors.border,
+              }
+            ]}
+            onPress={() => setGender('other')}
+          >
+            <Ionicons
+              name="person"
+              size={20}
+              color={gender === 'other' ? 'white' : theme.colors.text}
+            />
+            <Text style={[
+              styles.genderText,
+              { color: gender === 'other' ? 'white' : theme.colors.text }
+            ]}>
+              Otro
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Espacio extra cuando el teclado está abierto */}
@@ -329,52 +546,24 @@ const OnboardingScreen: React.FC = () => {
     </View>
   );
 
-  const renderStep3 = () => (
-    <View style={styles.stepContent}>
-      {/* Header */}
-      <View style={styles.step3Header}>
-        <View style={[styles.iconContainer, { backgroundColor: `${theme.colors.accent}20` }]}>
-          <Ionicons name="people" size={40} color={theme.colors.accent} />
-        </View>
-        <Text style={[styles.title, { color: theme.colors.text }]}>
-          Elige tus comunidades
-        </Text>
-        <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-          Selecciona las comunidades que te interesan. Podrás ver contenido y publicar en ellas.
-        </Text>
-      </View>
-
-      {/* Community Selector */}
-      <CommunitySelector
-        selectedCommunities={selectedCommunities}
-        onSelectionChange={setSelectedCommunities}
-        minSelection={1}
-        maxSelection={10}
-        showWarnings={true}
-      />
-    </View>
-  );
-
   const renderCurrentStep = () => {
     switch (step) {
       case 1:
         return renderStep1();
       case 2:
         return renderStep2();
-      case 3:
-        return renderStep3();
       default:
         return renderStep1();
     }
   };
 
   const getButtonText = () => {
-    if (step === 3) return 'Completar';
+    if (step === 2) return 'Completar';
     return 'Continuar';
   };
 
   const getButtonIcon = () => {
-    if (step === 3) return 'checkmark';
+    if (step === 2) return 'checkmark';
     return 'arrow-forward';
   };
 
@@ -508,6 +697,54 @@ const OnboardingScreen: React.FC = () => {
           </View>
         </>
       )}
+
+      {/* Modal para selección de fecha */}
+      <Modal
+        visible={showDateModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowDateModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.dateModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowDateModal(false)}
+        >
+          <View style={[styles.dateModalContent, { backgroundColor: theme.colors.surface }]}>
+            <View style={[styles.dateModalHeader, { borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.dateModalTitle, { color: theme.colors.text }]}>
+                {getDateModalTitle()}
+              </Text>
+              <TouchableOpacity onPress={() => setShowDateModal(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={getDateModalData()}
+              keyExtractor={(item) => item.value}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.dateModalItem,
+                    { borderBottomColor: theme.colors.border }
+                  ]}
+                  onPress={() => selectDateValue(item.value)}
+                >
+                  <Text style={[styles.dateModalItemText, { color: theme.colors.text }]}>
+                    {item.label}
+                  </Text>
+                  {((dateModalType === 'day' && birthDay === item.value) ||
+                    (dateModalType === 'month' && birthMonth === item.value) ||
+                    (dateModalType === 'year' && birthYear === item.value)) && (
+                    <Ionicons name="checkmark" size={20} color={theme.colors.accent} />
+                  )}
+                </TouchableOpacity>
+              )}
+              style={styles.dateModalList}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -639,12 +876,82 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginTop: scale(4),
   },
+  dateSelectorsRow: {
+    flexDirection: 'row',
+    gap: scale(10),
+  },
+  dateSelector: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: scale(14),
+    paddingHorizontal: scale(12),
+    borderRadius: scale(12),
+    borderWidth: scale(1),
+  },
+  dateSelectorMonth: {
+    flex: 1.5,
+  },
+  dateSelectorText: {
+    fontSize: scale(14),
+  },
+  dateModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  dateModalContent: {
+    borderTopLeftRadius: scale(16),
+    borderTopRightRadius: scale(16),
+    maxHeight: '60%',
+  },
+  dateModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(14),
+    borderBottomWidth: 1,
+  },
+  dateModalTitle: {
+    fontSize: scale(16),
+    fontWeight: '600',
+  },
+  dateModalList: {
+    paddingBottom: scale(20),
+  },
+  dateModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: scale(14),
+    paddingHorizontal: scale(16),
+    borderBottomWidth: 0.5,
+  },
+  dateModalItemText: {
+    fontSize: scale(15),
+  },
+  genderContainer: {
+    flexDirection: 'row',
+    gap: scale(10),
+  },
+  genderOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: scale(12),
+    borderRadius: scale(12),
+    borderWidth: scale(1),
+    gap: scale(6),
+  },
+  genderText: {
+    fontSize: scale(14),
+    fontWeight: '500',
+  },
   step2Header: {
     marginBottom: scale(24),
-    alignItems: 'center',
-  },
-  step3Header: {
-    marginBottom: scale(20),
     alignItems: 'center',
   },
   avatarSection: {

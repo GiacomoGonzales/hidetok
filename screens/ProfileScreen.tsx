@@ -14,7 +14,6 @@ import {
   Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -50,7 +49,6 @@ const ProfileScreen: React.FC = () => {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [updating, setUpdating] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [uploadingCover, setUploadingCover] = useState(false);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [userReposts, setUserReposts] = useState<Post[]>([]);
   const [userLikedPosts, setUserLikedPosts] = useState<Post[]>([]);
@@ -322,42 +320,6 @@ const ProfileScreen: React.FC = () => {
     }
   };
 
-  // Función para cambiar la foto de portada
-  const handleChangeCoverPhoto = async () => {
-    if (!user || !userProfile?.id) return;
-
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permiso requerido', 'Necesitamos acceso a tu galería para cambiar la foto de portada');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [16, 9],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setUploadingCover(true);
-        const { fullSize } = await uploadProfileImageFromUri(result.assets[0].uri, user.uid, 'cover');
-
-        await updateProfile({
-          coverPhotoURL: fullSize,
-        });
-
-        // No mostrar Alert para evitar interferencias
-      }
-    } catch (error) {
-      console.error('Error updating cover photo:', error);
-      Alert.alert('Error', 'No se pudo actualizar la foto de portada');
-    } finally {
-      setUploadingCover(false);
-    }
-  };
-
   const handleComment = (postId: string) => {
     const post = userPosts.find(p => p.id === postId);
     if (post) {
@@ -585,107 +547,57 @@ const ProfileScreen: React.FC = () => {
             />
           )}
 
-        {/* Cover Photo / Banner */}
-        <View style={styles.coverPhotoContainer}>
-          {userProfile.coverPhotoURL && typeof userProfile.coverPhotoURL === 'string' ? (
-            <Image
-              source={{ uri: userProfile.coverPhotoURL }}
-              style={styles.coverPhoto}
-              contentFit="cover"
-              priority="high"
-              cachePolicy="memory-disk"
-            />
-          ) : (
-            <View style={[styles.coverPhotoPlaceholder, { backgroundColor: theme.colors.surface }]}>
-              <View style={[styles.coverPhotoPattern, { backgroundColor: theme.colors.accent + '20' }]} />
-            </View>
-          )}
-
-          {/* Botón para cambiar foto de portada */}
-          <TouchableOpacity
-            style={[styles.changeCoverButton, { backgroundColor: theme.colors.card }]}
-            onPress={handleChangeCoverPhoto}
-            disabled={uploadingCover}
-            activeOpacity={0.7}
-          >
-            {uploadingCover ? (
-              <ActivityIndicator size="small" color={theme.colors.text} />
-            ) : (
-              <Ionicons name="camera" size={16} color={theme.colors.text} />
-            )}
-          </TouchableOpacity>
-        </View>
-
         {/* Información del perfil */}
         <View style={styles.profileInfo}>
-          {/* Avatar y botones */}
+          {/* Avatar centrado */}
           <View style={styles.avatarSection}>
-            <View style={styles.avatarWrapper}>
-              <TouchableOpacity
-                style={styles.avatarContainer}
-                onLongPress={handleAvatarLongPress}
-                delayLongPress={300}
-                activeOpacity={0.9}
-              >
-                {uploadingAvatar ? (
-                  <View style={[styles.avatarLoadingContainer, { backgroundColor: theme.colors.surface }]}>
-                    <ActivityIndicator size="large" color={theme.colors.accent} />
-                  </View>
-                ) : (
-                  <AvatarPicker
-                    currentAvatar={typeof userProfile.photoURL === 'string' ? userProfile.photoURL : undefined}
-                    currentAvatarType={userProfile.avatarType}
-                    currentAvatarId={userProfile.avatarId}
-                    onAvatarSelect={handleAvatarSelect}
-                    size={80}
-                  />
-                )}
-              </TouchableOpacity>
-              <Text style={[styles.displayName, { color: theme.colors.text }]}>
-                {userProfile.displayName}
-              </Text>
-            </View>
-            <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={[styles.editButton, {
-                  borderColor: theme.colors.border,
-                  backgroundColor: theme.colors.background
-                }]}
-                onPress={handleEditProfile}
-              >
-                <Ionicons name="create-outline" size={16} color={theme.colors.text} />
-                <Text style={[styles.editButtonText, { color: theme.colors.text }]}>Editar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.shareButton, { borderColor: theme.colors.border }]}
-                onPress={handleSettingsPress}
-              >
-                <Ionicons name="settings-outline" size={16} color={theme.colors.text} />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={styles.avatarContainer}
+              onLongPress={handleAvatarLongPress}
+              delayLongPress={300}
+              activeOpacity={0.9}
+            >
+              {uploadingAvatar ? (
+                <View style={[styles.avatarLoadingContainer, { backgroundColor: theme.colors.surface }]}>
+                  <ActivityIndicator size="large" color={theme.colors.accent} />
+                </View>
+              ) : (
+                <AvatarPicker
+                  currentAvatar={typeof userProfile.photoURL === 'string' ? userProfile.photoURL : undefined}
+                  currentAvatarType={userProfile.avatarType}
+                  currentAvatarId={userProfile.avatarId}
+                  onAvatarSelect={handleAvatarSelect}
+                  size={100}
+                />
+              )}
+            </TouchableOpacity>
           </View>
+
+          {/* Nombre */}
+          <Text style={[styles.displayName, { color: theme.colors.text }]}>
+            {userProfile.displayName}
+          </Text>
+
+          {/* Badge anónimo */}
+          {user?.isAnonymous && (
+            <Text style={[styles.anonymousBadge, { color: theme.colors.textSecondary }]}>
+              👤 Usuario Anónimo
+            </Text>
+          )}
 
           {/* Bio */}
-          <View style={styles.bioSection}>
+          {userProfile.bio ? (
             <Text style={[styles.bio, { color: theme.colors.text }]}>
-              {userProfile.bio || 'Sin biografía'}
+              {userProfile.bio}
             </Text>
-            {user?.isAnonymous && (
-              <Text style={[styles.anonymousBadge, { color: theme.colors.textSecondary }]}>
-                👤 Usuario Anónimo
-              </Text>
-            )}
-          </View>
+          ) : null}
 
-          {/* Información adicional */}
+          {/* Info adicional inline */}
           <View style={styles.infoSection}>
             {userProfile.website && (
               <View style={styles.infoRow}>
-                <Ionicons name="link-outline" size={14} color={theme.colors.textSecondary} />
-                <Text
-                  style={[styles.infoText, { color: theme.colors.accent }]}
-                  numberOfLines={1}
-                >
+                <Ionicons name="link-outline" size={14} color={theme.colors.accent} />
+                <Text style={[styles.infoText, { color: theme.colors.accent }]} numberOfLines={1}>
                   {userProfile.website}
                 </Text>
               </View>
@@ -693,37 +605,50 @@ const ProfileScreen: React.FC = () => {
             <View style={styles.infoRow}>
               <Ionicons name="calendar-outline" size={14} color={theme.colors.textSecondary} />
               <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
-                Miembro desde {userProfile.createdAt.toDate().toLocaleDateString()}
+                {userProfile.createdAt.toDate().toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
               </Text>
             </View>
           </View>
 
           {/* Estadísticas */}
           <View style={styles.statsSection}>
-            <View style={styles.stat}>
+            <TouchableOpacity style={styles.stat} activeOpacity={0.7}>
               <Text style={[styles.statNumber, { color: theme.colors.text }]}>
                 {formatNumber(userProfile.posts)}
               </Text>
-              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
-                Publicaciones
-              </Text>
-            </View>
-            <View style={styles.stat}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Posts</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.stat} activeOpacity={0.7}>
               <Text style={[styles.statNumber, { color: theme.colors.text }]}>
                 {formatNumber(userProfile.followers)}
               </Text>
-              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
-                Seguidores
-              </Text>
-            </View>
-            <View style={styles.stat}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Seguidores</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.stat} activeOpacity={0.7}>
               <Text style={[styles.statNumber, { color: theme.colors.text }]}>
                 {formatNumber(userProfile.following)}
               </Text>
-              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
-                Siguiendo
-              </Text>
-            </View>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Siguiendo</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Botones de acción */}
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={[styles.editButton, { backgroundColor: theme.colors.accent }]}
+              onPress={handleEditProfile}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="create-outline" size={18} color="white" />
+              <Text style={styles.editButtonText}>Editar perfil</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.settingsButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+              onPress={handleSettingsPress}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -871,145 +796,109 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  coverPhotoContainer: {
-    position: 'relative',
-    width: '100%',
-    height: 160,
-  },
-  coverPhoto: {
-    width: '100%',
-    height: '100%',
-  },
-  coverPhotoPlaceholder: {
-    width: '100%',
-    height: '100%',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  coverPhotoPattern: {
-    position: 'absolute',
-    width: '200%',
-    height: '200%',
-    top: -50,
-    left: -50,
-    transform: [{ rotate: '45deg' }],
-    opacity: 0.3,
-  },
-  changeCoverButton: {
-    position: 'absolute',
-    bottom: 12,
-    right: 12,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 4,
-  },
   profileInfo: {
-    padding: 16,
-    marginTop: -40,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 16,
+    alignItems: 'center',
   },
   avatarSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginBottom: 16,
-  },
-  avatarWrapper: {
-    alignItems: 'center',
-    marginRight: 16,
   },
   avatarContainer: {
-    marginBottom: 8,
-  },
-  displayName: {
-    fontSize: 16,
-    fontWeight: '600',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
   avatarLoadingContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginRight: 16,
-  },
-  actionButtons: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 6,
-  },
-  editButton: {
-    flex: 1,
-    flexDirection: 'row',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    gap: 4,
-  },
-  editButtonText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  shareButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bioSection: {
-    marginBottom: 16,
-  },
-  bio: {
-    fontSize: 14,
-    lineHeight: 20,
+  displayName: {
+    fontSize: 22,
+    fontWeight: '700',
     marginBottom: 4,
+    letterSpacing: -0.3,
   },
   anonymousBadge: {
-    fontSize: 12,
-    fontStyle: 'italic',
+    fontSize: 13,
+    marginBottom: 8,
+  },
+  bio: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 16,
   },
   infoSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 16,
     marginBottom: 20,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
+    gap: 4,
   },
   infoText: {
-    fontSize: 12,
-    flex: 1,
+    fontSize: 13,
   },
   statsSection: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'center',
+    gap: 32,
+    marginBottom: 20,
+    paddingVertical: 16,
+    width: '100%',
   },
   stat: {
     alignItems: 'center',
   },
   statNumber: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 2,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 13,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+    paddingHorizontal: 8,
+  },
+  editButton: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  editButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: 'white',
+  },
+  settingsButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tabsContainer: {
     flexDirection: 'row',

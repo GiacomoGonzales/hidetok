@@ -159,11 +159,19 @@ const SettingsScreen: React.FC = () => {
       <View style={[styles.header, {
         backgroundColor: theme.colors.background,
         borderBottomColor: theme.colors.border,
-        paddingTop: isDesktop ? 0 : insets.top,
+        paddingTop: isDesktop ? 0 : insets.top + 8,
       }]}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
           Ajustes
         </Text>
+        <View style={styles.headerRight} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -341,14 +349,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 0.5,
+  },
+  backButton: {
+    padding: 4,
+    width: 40,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     textAlign: 'center',
+    flex: 1,
+  },
+  headerRight: {
+    width: 40,
   },
   content: {
     flex: 1,

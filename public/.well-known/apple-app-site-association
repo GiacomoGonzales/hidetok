@@ -1,0 +1,21 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAM_ID.com.hidetok.app",
+        "paths": [
+          "/post/*",
+          "/user/*",
+          "/community/*",
+          "/feed/*"
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "TEAM_ID.com.hidetok.app"
+    ]
+  }
+}

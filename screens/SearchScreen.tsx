@@ -18,7 +18,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { communityService, Community } from '../services/communityService';
-import { searchUsers, searchPosts, Post, UserProfile } from '../services/firestoreService';
+import { searchUsers, searchPosts, getTrendingPosts, getPopularHashtags, getPostsByHashtag, Post, UserProfile, PopularHashtag } from '../services/firestoreService';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
 import { formatNumber } from '../data/mockData';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -37,8 +37,13 @@ const SearchScreen: React.FC = () => {
   const [filteredCommunities, setFilteredCommunities] = useState<Community[]>([]);
   const [searchedUsers, setSearchedUsers] = useState<UserProfile[]>([]);
   const [searchedPosts, setSearchedPosts] = useState<Post[]>([]);
+  const [trendingPosts, setTrendingPosts] = useState<Post[]>([]);
+  const [popularHashtags, setPopularHashtags] = useState<PopularHashtag[]>([]);
+  const [hashtagPosts, setHashtagPosts] = useState<Post[]>([]);
+  const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [loadingHashtagPosts, setLoadingHashtagPosts] = useState(false);
 
   // Manejar el botón de retroceso de Android
   useFocusEffect(
@@ -59,22 +64,28 @@ const SearchScreen: React.FC = () => {
     navigation.goBack();
   };
 
-  // Cargar comunidades al inicio
+  // Cargar comunidades, trending y hashtags al inicio
   useEffect(() => {
-    const loadCommunities = async () => {
+    const loadInitialData = async () => {
       try {
         setLoading(true);
-        const allCommunities = await communityService.getCommunities();
+        const [allCommunities, trending, hashtags] = await Promise.all([
+          communityService.getCommunities(),
+          getTrendingPosts(10),
+          getPopularHashtags(12),
+        ]);
         setCommunities(allCommunities);
         setFilteredCommunities(allCommunities);
+        setTrendingPosts(trending);
+        setPopularHashtags(hashtags);
       } catch (error) {
-        console.error('Error loading communities:', error);
+        console.error('Error loading initial data:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    loadCommunities();
+    loadInitialData();
   }, []);
 
   // Buscar cuando cambia la query
@@ -117,6 +128,8 @@ const SearchScreen: React.FC = () => {
     setFilteredCommunities(communities);
     setSearchedUsers([]);
     setSearchedPosts([]);
+    setSelectedHashtag(null);
+    setHashtagPosts([]);
   };
 
   const handleCommunityPress = (community: Community) => {
@@ -131,6 +144,31 @@ const SearchScreen: React.FC = () => {
 
   const handlePostPress = (post: Post) => {
     navigation.navigate('PostDetail', { post });
+  };
+
+  const handleHashtagPress = async (hashtag: string) => {
+    if (selectedHashtag === hashtag) {
+      // Deseleccionar
+      setSelectedHashtag(null);
+      setHashtagPosts([]);
+      return;
+    }
+
+    setSelectedHashtag(hashtag);
+    setLoadingHashtagPosts(true);
+    try {
+      const posts = await getPostsByHashtag(hashtag, 20);
+      setHashtagPosts(posts);
+    } catch (error) {
+      console.error('Error loading hashtag posts:', error);
+    } finally {
+      setLoadingHashtagPosts(false);
+    }
+  };
+
+  const clearHashtagSelection = () => {
+    setSelectedHashtag(null);
+    setHashtagPosts([]);
   };
 
   const renderContent = () => (
@@ -164,7 +202,13 @@ const SearchScreen: React.FC = () => {
             placeholder="Buscar comunidades, usuarios o posts..."
             placeholderTextColor={theme.colors.textSecondary}
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={(text) => {
+              setSearchQuery(text);
+              if (text.trim() && selectedHashtag) {
+                setSelectedHashtag(null);
+                setHashtagPosts([]);
+              }
+            }}
             autoCorrect={false}
             autoCapitalize="none"
             autoFocus={false}
@@ -179,7 +223,8 @@ const SearchScreen: React.FC = () => {
           )}
         </View>
 
-        {/* Categorías */}
+        {/* Categorías - solo mostrar cuando hay búsqueda */}
+        {(searchQuery.trim() || selectedHashtag) && (
         <View style={styles.categories}>
           <TouchableOpacity
             style={[styles.categoryButton, {
@@ -244,6 +289,7 @@ const SearchScreen: React.FC = () => {
             </Text>
           </TouchableOpacity>
         </View>
+        )}
       </View>
 
       {/* Contenido scrolleable */}
@@ -264,11 +310,163 @@ const SearchScreen: React.FC = () => {
           </View>
         ) : (
           <View style={styles.categoryContent}>
-            {/* Comunidades */}
-            {activeCategory === 'comunidades' && (
+            {/* Mostrar Discover cuando no hay búsqueda */}
+            {!searchQuery.trim() && !selectedHashtag && (
+              <>
+                {/* Hashtags Populares */}
+                {popularHashtags.length > 0 && (
+                  <View style={styles.discoverSection}>
+                    <View style={styles.sectionHeader}>
+                      <Ionicons name="trending-up" size={20} color={theme.colors.accent} />
+                      <Text style={[styles.sectionTitle, { color: theme.colors.text, marginBottom: 0, marginLeft: 8 }]}>
+                        Hashtags Populares
+                      </Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.hashtagsScroll}
+                    >
+                      {popularHashtags.map((item) => (
+                        <TouchableOpacity
+                          key={item.tag}
+                          style={[styles.hashtagChip, {
+                            backgroundColor: theme.colors.accent + '15',
+                            borderColor: theme.colors.accent + '30',
+                          }]}
+                          onPress={() => handleHashtagPress(item.tag)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.hashtagText, { color: theme.colors.accent }]}>
+                            #{item.tag}
+                          </Text>
+                          <View style={[styles.hashtagCount, { backgroundColor: theme.colors.accent }]}>
+                            <Text style={styles.hashtagCountText}>{item.count}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* Posts Trending */}
+                {trendingPosts.length > 0 && (
+                  <View style={styles.discoverSection}>
+                    <View style={styles.sectionHeader}>
+                      <Ionicons name="flame" size={20} color="#F97316" />
+                      <Text style={[styles.sectionTitle, { color: theme.colors.text, marginBottom: 0, marginLeft: 8 }]}>
+                        Trending
+                      </Text>
+                    </View>
+                    {trendingPosts.slice(0, 5).map((post, index) => (
+                      <TouchableOpacity
+                        key={post.id}
+                        style={[styles.trendingItem, {
+                          backgroundColor: theme.colors.surface,
+                          borderColor: theme.colors.border,
+                        }]}
+                        onPress={() => handlePostPress(post)}
+                        activeOpacity={0.8}
+                      >
+                        <View style={[styles.trendingRank, { backgroundColor: index < 3 ? '#F97316' : theme.colors.textSecondary }]}>
+                          <Text style={styles.trendingRankText}>{index + 1}</Text>
+                        </View>
+                        <View style={styles.trendingContent}>
+                          <Text style={[styles.trendingText, { color: theme.colors.text }]} numberOfLines={2}>
+                            {post.content}
+                          </Text>
+                          <View style={styles.trendingStats}>
+                            <Ionicons name="heart" size={12} color={theme.colors.like} />
+                            <Text style={[styles.trendingStatText, { color: theme.colors.textSecondary }]}>
+                              {post.likes || 0}
+                            </Text>
+                            <Ionicons name="chatbubble" size={12} color={theme.colors.textSecondary} style={{ marginLeft: 12 }} />
+                            <Text style={[styles.trendingStatText, { color: theme.colors.textSecondary }]}>
+                              {post.comments || 0}
+                            </Text>
+                          </View>
+                        </View>
+                        {post.imageUrls && post.imageUrls.length > 0 && (
+                          <Image
+                            source={{ uri: post.imageUrlsThumbnails?.[0] || post.imageUrls[0] }}
+                            style={styles.trendingImage}
+                          />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
+            {/* Posts de hashtag seleccionado */}
+            {selectedHashtag && (
+              <View>
+                <View style={styles.hashtagHeader}>
+                  <TouchableOpacity onPress={clearHashtagSelection} style={styles.backButton}>
+                    <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+                  </TouchableOpacity>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.accent, marginBottom: 0, flex: 1 }]}>
+                    #{selectedHashtag}
+                  </Text>
+                </View>
+                {loadingHashtagPosts ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color={theme.colors.accent} />
+                  </View>
+                ) : hashtagPosts.length === 0 ? (
+                  <View style={styles.noResults}>
+                    <Ionicons name="document-text-outline" size={48} color={theme.colors.textSecondary} />
+                    <Text style={[styles.noResultsText, { color: theme.colors.textSecondary }]}>
+                      No hay posts con este hashtag
+                    </Text>
+                  </View>
+                ) : (
+                  hashtagPosts.map((post) => (
+                    <TouchableOpacity
+                      key={post.id}
+                      style={[styles.postItem, {
+                        backgroundColor: theme.colors.card,
+                        borderColor: theme.colors.border,
+                      }]}
+                      onPress={() => handlePostPress(post)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.postContent, { color: theme.colors.text }]} numberOfLines={3}>
+                        {post.content}
+                      </Text>
+                      {post.imageUrls && post.imageUrls.length > 0 && (
+                        <Image
+                          source={{ uri: post.imageUrlsThumbnails?.[0] || post.imageUrls[0] }}
+                          style={[styles.postImage, { backgroundColor: theme.colors.surface }]}
+                          resizeMode="cover"
+                        />
+                      )}
+                      <View style={styles.postStats}>
+                        <View style={styles.postStat}>
+                          <Ionicons name="heart" size={14} color={theme.colors.like} />
+                          <Text style={[styles.postStatText, { color: theme.colors.textSecondary }]}>
+                            {formatNumber(post.likes || 0)}
+                          </Text>
+                        </View>
+                        <View style={styles.postStat}>
+                          <Ionicons name="chatbubble" size={14} color={theme.colors.textSecondary} />
+                          <Text style={[styles.postStatText, { color: theme.colors.textSecondary }]}>
+                            {formatNumber(post.comments || 0)}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
+            )}
+
+            {/* Comunidades - solo mostrar si hay búsqueda o no hay hashtag seleccionado */}
+            {activeCategory === 'comunidades' && searchQuery.trim() && (
               <View>
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                  {searchQuery.trim() ? 'Resultados' : 'Todas las Comunidades'}
+                  Resultados
                 </Text>
                 {filteredCommunities.length === 0 ? (
                   <View style={styles.noResults}>
@@ -317,8 +515,8 @@ const SearchScreen: React.FC = () => {
               </View>
             )}
 
-            {/* Usuarios */}
-            {activeCategory === 'usuarios' && (
+            {/* Usuarios - solo mostrar si hay búsqueda */}
+            {activeCategory === 'usuarios' && searchQuery.trim() && !selectedHashtag && (
               <View>
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
                   {searchQuery.trim().length >= 2 ? 'Usuarios encontrados' : 'Busca usuarios'}
@@ -379,8 +577,8 @@ const SearchScreen: React.FC = () => {
               </View>
             )}
 
-            {/* Posts */}
-            {activeCategory === 'posts' && (
+            {/* Posts - solo mostrar si hay búsqueda */}
+            {activeCategory === 'posts' && searchQuery.trim() && !selectedHashtag && (
               <View>
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
                   {searchQuery.trim().length >= 2 ? 'Posts encontrados' : 'Busca posts'}
@@ -638,6 +836,103 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 16,
     textAlign: 'center',
+  },
+  // Discover section styles
+  discoverSection: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  hashtagsScroll: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  hashtagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  hashtagText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  hashtagCount: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  hashtagCountText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  // Trending styles
+  trendingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+    borderWidth: 0.5,
+  },
+  trendingRank: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  trendingRankText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  trendingContent: {
+    flex: 1,
+  },
+  trendingText: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 4,
+  },
+  trendingStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  trendingStatText: {
+    fontSize: 12,
+    marginLeft: 4,
+  },
+  trendingImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    marginLeft: 12,
+  },
+  // Hashtag header
+  hashtagHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  backButton: {
+    marginRight: 12,
+    padding: 4,
   },
 });
 

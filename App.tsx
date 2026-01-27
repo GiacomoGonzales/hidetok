@@ -2,13 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Alert, Platform, StatusBar } from 'react-native';
+import * as Linking from 'expo-linking';
 
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { UserProfileProvider } from './contexts/UserProfileContext';
 import { ScrollProvider } from './contexts/ScrollContext';
-// Push notifications deshabilitadas temporalmente - requieren nuevo build nativo
-// import { PushNotificationProvider } from './contexts/PushNotificationContext';
+import { PushNotificationProvider } from './contexts/PushNotificationContext';
 import MainStackNavigator from './navigation/MainStackNavigator';
 import ErrorBoundary from './components/ErrorBoundary';
 import SplashScreen from './components/SplashScreen';
@@ -24,9 +24,18 @@ const CustomDarkTheme = {
   },
 };
 
-// Configuración de linking para web
+// Prefijo para deep links nativos
+const prefix = Linking.createURL('/');
+
+// Configuración de linking para deep links y universal links
 const linking: any = {
-  prefixes: ['http://localhost:8082', 'https://hidetok.app'],
+  prefixes: [
+    prefix,
+    'hidetok://',
+    'https://hidetok.com',
+    'https://www.hidetok.com',
+    'http://localhost:8082',
+  ],
   config: {
     screens: {
       Main: {
@@ -35,6 +44,8 @@ const linking: any = {
           Home: {
             path: 'home',
             screens: {
+              Landing: '',
+              Feed: 'feed/:communitySlug?',
               HomeFeed: '',
             },
           },
@@ -55,7 +66,24 @@ const linking: any = {
       },
       Search: 'search',
       Settings: 'settings',
-      PostDetail: 'post/:id',
+      PostDetail: {
+        path: 'post/:postId',
+        parse: {
+          postId: (postId: string) => postId,
+        },
+      },
+      UserProfile: {
+        path: 'user/:userId',
+        parse: {
+          userId: (userId: string) => userId,
+        },
+      },
+      Community: {
+        path: 'community/:communityId',
+        parse: {
+          communityId: (communityId: string) => communityId,
+        },
+      },
     },
   },
 };
@@ -103,7 +131,9 @@ export default function App() {
             <UserProfileProvider>
               <ScrollProvider>
                 <NavigationContainer linking={linking} theme={CustomDarkTheme}>
+                  <PushNotificationProvider>
                     <MainStackNavigator />
+                  </PushNotificationProvider>
                 </NavigationContainer>
               </ScrollProvider>
             </UserProfileProvider>

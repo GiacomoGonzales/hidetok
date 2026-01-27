@@ -32,7 +32,29 @@
       },
       "userInterfaceStyle": "automatic",
       "backgroundColor": "#0A0A0A",
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "pan",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "hidetok.com",
+              "pathPrefix": "/post"
+            },
+            {
+              "scheme": "https",
+              "host": "www.hidetok.com",
+              "pathPrefix": "/post"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "ios": {
       "bundleIdentifier": "com.hidetok.app",
@@ -49,6 +71,10 @@
       },
       "userInterfaceStyle": "automatic",
       "backgroundColor": "#0A0A0A",
+      "associatedDomains": [
+        "applinks:hidetok.com",
+        "applinks:www.hidetok.com"
+      ],
       "infoPlist": {
         "UIViewControllerBasedStatusBarAppearance": false,
         "UIStatusBarStyle": "UIStatusBarStyleLightContent",
@@ -76,11 +102,19 @@
     "plugins": [
       "expo-web-browser",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#8B5CF6",
+          "defaultChannel": "default"
+        }
+      ],
+      [
         "@react-native-google-signin/google-signin",
         {
           "iosUrlScheme": "com.googleusercontent.apps.600935858829-v7m2m7j21k2sae85u0cd1mnsuq0vds0b"
         }
-      ]
+      ],
     ],
     "owner": "giacomogonzales"
   }

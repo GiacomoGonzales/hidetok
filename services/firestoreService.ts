@@ -72,8 +72,11 @@ export interface Post {
 export interface UserProfile {
   id?: string;
   uid: string;
-  displayName: string;
+  realName?: string; // Nombre real (privado, no se muestra)
+  displayName: string; // Alias público
   email: string;
+  birthDate?: string; // Fecha de nacimiento ISO string
+  gender?: 'male' | 'female' | 'other';
   photoURL?: string;
   photoURLThumbnail?: string; // Versión pequeña para el feed (150x150px)
   coverPhotoURL?: string; // Foto de portada/banner
@@ -712,6 +715,112 @@ export const searchPosts = async (searchQuery: string, limitCount = 10): Promise
     return filtered.slice(0, limitCount);
   } catch (error) {
     console.error('Error searching posts:', error);
+    return [];
+  }
+};
+
+// Obtener posts trending (más engagement: likes + comments)
+export const getTrendingPosts = async (limitCount = 10): Promise<Post[]> => {
+  try {
+    // Obtener posts recientes (últimos 100)
+    const snapshot = await getDocs(
+      query(
+        collection(db, 'posts'),
+        orderBy('createdAt', 'desc'),
+        limit(100)
+      )
+    );
+
+    const posts = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Post));
+
+    // Ordenar por engagement (likes + comments)
+    const sorted = posts.sort((a, b) => {
+      const engagementA = (a.likes || 0) + (a.comments || 0) * 2;
+      const engagementB = (b.likes || 0) + (b.comments || 0) * 2;
+      return engagementB - engagementA;
+    });
+
+    return sorted.slice(0, limitCount);
+  } catch (error) {
+    console.error('Error getting trending posts:', error);
+    return [];
+  }
+};
+
+// Obtener hashtags populares
+export interface PopularHashtag {
+  tag: string;
+  count: number;
+}
+
+export const getPopularHashtags = async (limitCount = 10): Promise<PopularHashtag[]> => {
+  try {
+    // Obtener posts recientes
+    const snapshot = await getDocs(
+      query(
+        collection(db, 'posts'),
+        orderBy('createdAt', 'desc'),
+        limit(200)
+      )
+    );
+
+    // Contar hashtags
+    const hashtagCounts: Record<string, number> = {};
+
+    snapshot.docs.forEach(doc => {
+      const post = doc.data() as Post;
+      if (post.hashtags && Array.isArray(post.hashtags)) {
+        post.hashtags.forEach(tag => {
+          const normalizedTag = tag.toLowerCase().trim();
+          if (normalizedTag) {
+            hashtagCounts[normalizedTag] = (hashtagCounts[normalizedTag] || 0) + 1;
+          }
+        });
+      }
+    });
+
+    // Convertir a array y ordenar por count
+    const sorted = Object.entries(hashtagCounts)
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, limitCount);
+
+    return sorted;
+  } catch (error) {
+    console.error('Error getting popular hashtags:', error);
+    return [];
+  }
+};
+
+// Buscar posts por hashtag
+export const getPostsByHashtag = async (hashtag: string, limitCount = 20): Promise<Post[]> => {
+  try {
+    const normalizedTag = hashtag.toLowerCase().trim().replace('#', '');
+
+    const snapshot = await getDocs(
+      query(
+        collection(db, 'posts'),
+        orderBy('createdAt', 'desc'),
+        limit(200)
+      )
+    );
+
+    const posts = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Post));
+
+    // Filtrar por hashtag
+    const filtered = posts.filter(post =>
+      post.hashtags?.some(tag => tag.toLowerCase().trim() === normalizedTag)
+    );
+
+    return filtered.slice(0, limitCount);
+  } catch (error) {
+    console.error('Error getting posts by hashtag:', error);
     return [];
   }
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,10 +17,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
+import { useScroll } from '../contexts/ScrollContext';
 import { communityService, Community } from '../services/communityService';
 import { postsService, Post } from '../services/firestoreService';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
 import PostCard from '../components/PostCard';
+import Header from '../components/Header';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS } from '../constants/design';
 import { scale } from '../utils/scale';
 
@@ -72,6 +74,7 @@ const LANDING_CATEGORIES = [
     id: 'entretenimiento',
     name: 'Entretenimiento',
     icon: 'film-outline',
+    customIcon: require('../assets/icons/category-entretenimiento.png'),
     color: '#F59E0B',
     communitySlug: 'entretenimiento',
   },
@@ -87,6 +90,7 @@ const LANDING_CATEGORIES = [
     id: 'educacion',
     name: 'Educacion & Carrera',
     icon: 'school-outline',
+    customIcon: require('../assets/icons/category-educacion.png'),
     color: '#0EA5E9',
     communitySlug: 'educacion-carrera',
   },
@@ -94,6 +98,7 @@ const LANDING_CATEGORIES = [
     id: 'deportes',
     name: 'Deportes',
     icon: 'football-outline',
+    customIcon: require('../assets/icons/category-deportes.png'),
     color: '#EF4444',
     communitySlug: 'deportes',
   },
@@ -101,6 +106,7 @@ const LANDING_CATEGORIES = [
     id: 'confesiones',
     name: 'Confesiones',
     icon: 'eye-off-outline',
+    customIcon: require('../assets/icons/category-confesiones.png'),
     color: '#6B7280',
     communitySlug: 'confesiones',
   },
@@ -169,8 +175,10 @@ const LandingScreen: React.FC = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
   const { userProfile } = useUserProfile();
+  const { scrollToTopTrigger } = useScroll();
   const navigation = useNavigation<LandingScreenNavigationProp>();
   const insets = useSafeAreaInsets();
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const [trendingPost, setTrendingPost] = useState<Post | null>(null);
   const [featuredPost, setFeaturedPost] = useState<Post | null>(null);
@@ -181,6 +189,13 @@ const LandingScreen: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Scroll to top cuando se dispara el trigger
+  useEffect(() => {
+    if (scrollToTopTrigger > 0) {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    }
+  }, [scrollToTopTrigger]);
 
   const loadData = async () => {
     try {
@@ -293,48 +308,16 @@ const LandingScreen: React.FC = () => {
     return num.toString();
   };
 
-  const renderHeader = () => (
-    <View style={[styles.header, { paddingTop: insets.top + SPACING.sm }]}>
-      <Image
-        source={require('../assets/logo.png')}
-        style={styles.logo}
-        contentFit="contain"
-        priority="high"
-        cachePolicy="memory-disk"
-      />
-
-      <View style={styles.headerRight}>
-        {user ? (
-          <TouchableOpacity
-            style={styles.profileButton}
-            onPress={handleProfilePress}
-          >
-            <AvatarDisplay
-              avatarType={userProfile?.avatarType}
-              avatarId={userProfile?.avatarId}
-              photoURL={userProfile?.photoURL}
-              size={scale(32)}
-            />
-            <Text style={[styles.profileName, { color: theme.colors.text }]} numberOfLines={1}>
-              {userProfile?.displayName || 'Usuario'}
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <>
-            <TouchableOpacity onPress={handleLogin}>
-              <Text style={[styles.loginText, { color: theme.colors.text }]}>Ingresar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.registerButton, { backgroundColor: theme.colors.accent }]}
-              onPress={handleRegister}
-            >
-              <Text style={styles.registerText}>Unete ahora</Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
-    </View>
-  );
+  const handleNotificationsPress = () => {
+    if (!user) {
+      handleRegister();
+      return;
+    }
+    const tabNavigation = navigation.getParent();
+    if (tabNavigation) {
+      (tabNavigation as any).navigate('Notifications');
+    }
+  };
 
   const renderHero = () => (
     <LinearGradient
@@ -597,8 +580,9 @@ const LandingScreen: React.FC = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {renderHeader()}
+      <Header onNotificationsPress={handleNotificationsPress} />
       <ScrollView
+        ref={scrollViewRef}
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + SPACING.xl }}
@@ -624,48 +608,6 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-  },
-
-  // Header
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.md,
-  },
-  logo: {
-    height: scale(28),
-    width: scale(100),
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  loginText: {
-    fontSize: FONT_SIZE.base,
-    fontWeight: FONT_WEIGHT.medium,
-  },
-  registerButton: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.full,
-  },
-  registerText: {
-    color: 'white',
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.semibold,
-  },
-  profileButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  profileName: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.medium,
-    maxWidth: scale(100),
   },
 
   // Hero

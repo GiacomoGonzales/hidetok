@@ -14,9 +14,13 @@ import {
   NativeScrollEvent,
   Animated,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import ViewShot from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
+import ShareablePostCard from './ShareablePostCard';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useTheme } from '../contexts/ThemeContext';
@@ -110,7 +114,10 @@ const PostCard: React.FC<PostCardProps> = ({
   const [userVote, setUserVote] = useState<number | null>(null);
   const [localPoll, setLocalPoll] = useState(post.poll);
   const [localViews, setLocalViews] = useState(post.views || 0);
+  const [isSharing, setIsSharing] = useState(false);
+  const [showShareCard, setShowShareCard] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const shareCardRef = useRef<ViewShot>(null);
   const carouselWidth = getCarouselWidth();
 
   // Animaciones para el menú
@@ -198,9 +205,9 @@ const PostCard: React.FC<PostCardProps> = ({
     }
   }, [menuVisible]);
 
-  // Incrementar vistas cuando el post se monta
+  // Incrementar vistas cuando el post se monta (solo si hay usuario autenticado)
   useEffect(() => {
-    if (post.id) {
+    if (post.id && user) {
       // Incrementar vista después de un pequeño delay para asegurar que se vea
       const timer = setTimeout(() => {
         // Actualizar localmente primero (optimistic update)
@@ -211,7 +218,7 @@ const PostCard: React.FC<PostCardProps> = ({
 
       return () => clearTimeout(timer);
     }
-  }, [post.id]);
+  }, [post.id, user]);
 
   // Cargar dimensiones de la primera imagen con mejor manejo de errores
   useEffect(() => {
@@ -285,12 +292,68 @@ const PostCard: React.FC<PostCardProps> = ({
   };
 
   const handleShare = async () => {
+    // Determinar el post a compartir (original si es repost)
+    const postToShare = isRepost && originalPost ? originalPost : post;
+
+    // En web, usar share nativo de texto directamente
+    if (Platform.OS === 'web') {
+      try {
+        await Share.share({
+          message: `${postToShare.content}\n\n- Publicado en HideTok`,
+        });
+      } catch (error) {
+        console.error('Error sharing on web:', error);
+      }
+      return;
+    }
+
     try {
-      await Share.share({
-        message: `${post.content}\n\n- Usuario en HideTok`,
-      });
-    } catch (error) {
+      setIsSharing(true);
+      setShowShareCard(true);
+
+      // Esperar a que el componente se renderice completamente
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      if (shareCardRef.current && shareCardRef.current.capture) {
+        // Capturar la imagen
+        const uri = await shareCardRef.current.capture();
+        console.log('📸 Imagen capturada:', uri);
+
+        if (uri) {
+          // Verificar si compartir está disponible
+          const isAvailable = await Sharing.isAvailableAsync();
+          console.log('📤 Sharing disponible:', isAvailable);
+
+          if (isAvailable) {
+            await Sharing.shareAsync(uri, {
+              mimeType: 'image/png',
+              dialogTitle: 'Compartir publicación',
+            });
+          } else {
+            // Fallback a Share nativo con texto
+            await Share.share({
+              message: `${postToShare.content}\n\n- Publicado en HideTok`,
+            });
+          }
+        } else {
+          throw new Error('No se pudo capturar la imagen');
+        }
+      } else {
+        throw new Error('ViewShot ref no disponible');
+      }
+    } catch (error: any) {
       console.error('Error sharing:', error);
+      // Fallback a share de texto
+      try {
+        await Share.share({
+          message: `${postToShare.content}\n\n- Publicado en HideTok`,
+        });
+      } catch (e) {
+        Alert.alert('Error', 'No se pudo compartir la publicación');
+      }
+    } finally {
+      setIsSharing(false);
+      setShowShareCard(false);
     }
   };
 
@@ -843,27 +906,28 @@ const PostCard: React.FC<PostCardProps> = ({
           </TouchableOpacity>
           {renderMedia()}
           {renderPoll()}
+
+          {/* Tags del post */}
+          {displayPost.tags && displayPost.tags.length > 0 && (
+            <View style={styles.tagsContainer}>
+              {displayPost.tags.map((tag, index) => (
+                <View
+                  key={index}
+                  style={[styles.tagChip, { backgroundColor: theme.colors.accent + '15' }]}
+                >
+                  <Text style={[styles.tagText, { color: theme.colors.accent }]}>
+                    #{tag}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       </View>
 
       {/* Acciones */}
       <View style={styles.actions}>
-        {/* Vistas */}
-        <TouchableOpacity
-          style={styles.actionButton}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="eye-outline"
-            size={ICON_SIZE.sm}
-            color={theme.colors.textSecondary}
-          />
-          <Text style={[styles.actionText, { color: theme.colors.textSecondary }]}>
-            {formatNumber(localViews)}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Votación: De acuerdo */}
+        {/* De acuerdo (manito arriba) */}
         <TouchableOpacity
           style={styles.actionButton}
           onPress={handleVoteAgree}
@@ -872,7 +936,7 @@ const PostCard: React.FC<PostCardProps> = ({
         >
           <Ionicons
             name={voteStats.userVote === 'agree' ? "thumbs-up" : "thumbs-up-outline"}
-            size={ICON_SIZE.sm}
+            size={ICON_SIZE.md}
             color={voteStats.userVote === 'agree' ? '#22C55E' : theme.colors.textSecondary}
           />
           <Text style={[styles.actionText, {
@@ -882,7 +946,7 @@ const PostCard: React.FC<PostCardProps> = ({
           </Text>
         </TouchableOpacity>
 
-        {/* Votación: En desacuerdo */}
+        {/* En desacuerdo (manito abajo) */}
         <TouchableOpacity
           style={styles.actionButton}
           onPress={handleVoteDisagree}
@@ -891,7 +955,7 @@ const PostCard: React.FC<PostCardProps> = ({
         >
           <Ionicons
             name={voteStats.userVote === 'disagree' ? "thumbs-down" : "thumbs-down-outline"}
-            size={ICON_SIZE.sm}
+            size={ICON_SIZE.md}
             color={voteStats.userVote === 'disagree' ? '#EF4444' : theme.colors.textSecondary}
           />
           <Text style={[styles.actionText, {
@@ -901,15 +965,6 @@ const PostCard: React.FC<PostCardProps> = ({
           </Text>
         </TouchableOpacity>
 
-        {/* Porcentaje de acuerdo */}
-        {getAgreementDisplay() && (
-          <View style={styles.agreementBadge}>
-            <Text style={[styles.agreementText, { color: theme.colors.accent }]}>
-              {getAgreementDisplay()}
-            </Text>
-          </View>
-        )}
-
         {/* Comentarios */}
         <TouchableOpacity
           style={styles.actionButton}
@@ -918,7 +973,7 @@ const PostCard: React.FC<PostCardProps> = ({
         >
           <Ionicons
             name="chatbubble-outline"
-            size={ICON_SIZE.sm}
+            size={ICON_SIZE.md}
             color={theme.colors.textSecondary}
           />
           <Text style={[styles.actionText, { color: theme.colors.textSecondary }]}>
@@ -926,29 +981,7 @@ const PostCard: React.FC<PostCardProps> = ({
           </Text>
         </TouchableOpacity>
 
-        {/* Privados */}
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => {
-            const authorId = isRepost && originalPost ? originalPost.userId : post.userId;
-            onPrivateMessage(authorId, postAuthor ? {
-              displayName: postAuthor.displayName,
-              avatarType: postAuthor.avatarType,
-              avatarId: postAuthor.avatarId,
-              photoURL: postAuthor.photoURL,
-              photoURLThumbnail: postAuthor.photoURLThumbnail,
-            } : undefined);
-          }}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="mail-outline"
-            size={ICON_SIZE.sm}
-            color={theme.colors.textSecondary}
-          />
-        </TouchableOpacity>
-
-        {/* Repostear */}
+        {/* Repost */}
         <TouchableOpacity
           style={styles.actionButton}
           onPress={toggleRepost}
@@ -956,26 +989,47 @@ const PostCard: React.FC<PostCardProps> = ({
           activeOpacity={0.7}
         >
           <Ionicons
-            name={hasReposted ? "repeat" : "repeat-outline"}
-            size={ICON_SIZE.sm}
+            name="repeat"
+            size={ICON_SIZE.md}
             color={hasReposted ? theme.colors.accent : theme.colors.textSecondary}
           />
-          <Text style={[
-            styles.actionText,
-            { color: hasReposted ? theme.colors.accent : theme.colors.textSecondary }
-          ]}>
+          <Text style={[styles.actionText, {
+            color: hasReposted ? theme.colors.accent : theme.colors.textSecondary
+          }]}>
             {formatNumber(repostsCount)}
           </Text>
         </TouchableOpacity>
 
-        {/* Guardar */}
+        {/* Mensaje privado */}
+        {!isOwnPost && postAuthor && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => onPrivateMessage(displayPost.userId, {
+              displayName: postAuthor.displayName || 'Usuario',
+              avatarType: postAuthor.avatarType,
+              avatarId: postAuthor.avatarId,
+              photoURL: typeof postAuthor.photoURL === 'string' ? postAuthor.photoURL : undefined,
+            })}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="paper-plane-outline"
+              size={ICON_SIZE.md}
+              color={theme.colors.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
+
+        {/* Compartir */}
         <TouchableOpacity
           style={styles.actionButton}
+          onPress={handleShare}
+          disabled={isSharing}
           activeOpacity={0.7}
         >
           <Ionicons
-            name="bookmark-outline"
-            size={ICON_SIZE.sm}
+            name="share-social-outline"
+            size={ICON_SIZE.md}
             color={theme.colors.textSecondary}
           />
         </TouchableOpacity>
@@ -1046,6 +1100,37 @@ const PostCard: React.FC<PostCardProps> = ({
             </TouchableOpacity>
           </Animated.View>
         </>
+      )}
+
+      {/* Hidden shareable card for capturing */}
+      {showShareCard && (
+        <View style={styles.shareCardContainer}>
+          <ViewShot
+            ref={shareCardRef}
+            options={{
+              format: 'png',
+              quality: 1,
+              result: 'tmpfile',
+            }}
+          >
+            <ShareablePostCard
+              post={displayPost}
+              authorName={postAuthor?.displayName || 'Usuario Anónimo'}
+              authorAvatarType={postAuthor?.avatarType}
+              authorAvatarId={postAuthor?.avatarId}
+              authorPhotoURL={typeof postAuthor?.photoURL === 'string' ? postAuthor.photoURL : undefined}
+              communityName={community?.name}
+            />
+          </ViewShot>
+        </View>
+      )}
+
+      {/* Loading overlay while sharing */}
+      {isSharing && (
+        <View style={styles.sharingOverlay}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
+          <Text style={styles.sharingText}>Preparando imagen...</Text>
+        </View>
       )}
     </View>
   );
@@ -1358,6 +1443,45 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: FONT_SIZE.sm,
     marginTop: SPACING.sm,
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+    marginTop: SPACING.md,
+  },
+  tagChip: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  tagText: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.semibold,
+  },
+  shareCardContainer: {
+    position: 'absolute',
+    left: -9999,
+    top: 0,
+    opacity: 0,
+  },
+  sharingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: BORDER_RADIUS.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1001,
+  },
+  sharingText: {
+    color: 'white',
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZE.base,
+    fontWeight: FONT_WEIGHT.medium,
   },
 });
 

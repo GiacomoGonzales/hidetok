@@ -23,7 +23,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { useUserById } from '../hooks/useUserById';
-import { useLikes } from '../hooks/useLikes';
+import { useVote } from '../hooks/useVote';
+import { useReposts } from '../hooks/useReposts';
 import { Post, Comment, commentsService, postsService, PollOption } from '../services/firestoreService';
 import { notificationService } from '../services/notificationService';
 import { uploadCommentImage } from '../services/storageService';
@@ -68,14 +69,20 @@ const PostDetailScreen: React.FC = () => {
   const { post } = route.params;
   const { userProfile: postAuthor, loading: loadingAuthor } = useUserById(post.userId);
 
-  // Hook de likes con estado optimista y notificaciones
-  const { isLiked, likesCount, toggleLike } = useLikes(
+  // Hook de votación con estado optimista
+  const { stats: voteStats, voteAgree, voteDisagree, isLoading: isVoting } = useVote({
+    postId: post.id!,
+    userId: user?.uid,
+    initialStats: {
+      agreementCount: post.agreementCount || 0,
+      disagreementCount: post.disagreementCount || 0,
+    },
+  });
+
+  // Hook de reposts
+  const { hasReposted, repostsCount, toggleRepost, loading: isReposting } = useReposts(
     post.id!,
-    post.likes,
-    {
-      postOwnerId: post.userId,
-      postContent: post.content,
-    }
+    post.reposts || 0
   );
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -161,8 +168,14 @@ const PostDetailScreen: React.FC = () => {
     return Math.max(MIN_IMAGE_HEIGHT, Math.min(MAX_IMAGE_HEIGHT, calculatedHeight));
   };
 
-  const handleLike = async () => {
-    await toggleLike();
+  const handleVoteAgree = async () => {
+    if (!user) return;
+    await voteAgree();
+  };
+
+  const handleVoteDisagree = async () => {
+    if (!user) return;
+    await voteDisagree();
   };
 
   const handleProfilePress = () => {
@@ -651,11 +664,11 @@ const PostDetailScreen: React.FC = () => {
             </Text>
           </View>
           <View style={styles.statItem}>
-            <Ionicons name="heart-outline" size={ICON_SIZE.sm} color={theme.colors.textSecondary} />
+            <Ionicons name="thumbs-up-outline" size={ICON_SIZE.sm} color={theme.colors.textSecondary} />
             <Text style={[styles.statText, { color: theme.colors.textSecondary }]}>
               <Text style={{ fontWeight: FONT_WEIGHT.semibold, color: theme.colors.text }}>
-                {formatNumber(likesCount)}
-              </Text> me gusta
+                {formatNumber(voteStats.agreementCount)}
+              </Text> de acuerdo
             </Text>
           </View>
           <View style={styles.statItem}>
@@ -670,22 +683,43 @@ const PostDetailScreen: React.FC = () => {
 
         {/* Actions */}
         <View style={[styles.actions, { borderBottomColor: theme.colors.border }]}>
+          {/* De acuerdo */}
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={handleLike}
+            onPress={handleVoteAgree}
+            disabled={isVoting}
           >
             <Ionicons
-              name={isLiked ? "heart" : "heart-outline"}
+              name={voteStats.userVote === 'agree' ? "thumbs-up" : "thumbs-up-outline"}
               size={ICON_SIZE.md}
-              color={isLiked ? theme.colors.like : theme.colors.textSecondary}
+              color={voteStats.userVote === 'agree' ? '#22C55E' : theme.colors.textSecondary}
             />
             <Text style={[styles.actionText, {
-              color: isLiked ? theme.colors.like : theme.colors.textSecondary
+              color: voteStats.userVote === 'agree' ? '#22C55E' : theme.colors.textSecondary
             }]}>
-              Me gusta
+              {formatNumber(voteStats.agreementCount)}
             </Text>
           </TouchableOpacity>
 
+          {/* En desacuerdo */}
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handleVoteDisagree}
+            disabled={isVoting}
+          >
+            <Ionicons
+              name={voteStats.userVote === 'disagree' ? "thumbs-down" : "thumbs-down-outline"}
+              size={ICON_SIZE.md}
+              color={voteStats.userVote === 'disagree' ? '#EF4444' : theme.colors.textSecondary}
+            />
+            <Text style={[styles.actionText, {
+              color: voteStats.userVote === 'disagree' ? '#EF4444' : theme.colors.textSecondary
+            }]}>
+              {formatNumber(voteStats.disagreementCount)}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Comentarios */}
           <TouchableOpacity style={styles.actionButton}>
             <Ionicons
               name="chatbubble-outline"
@@ -693,19 +727,61 @@ const PostDetailScreen: React.FC = () => {
               color={theme.colors.textSecondary}
             />
             <Text style={[styles.actionText, { color: theme.colors.textSecondary }]}>
-              Comentar
+              {formatNumber(post.comments)}
             </Text>
           </TouchableOpacity>
 
+          {/* Repost */}
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={toggleRepost}
+            disabled={isReposting}
+          >
+            <Ionicons
+              name="repeat"
+              size={ICON_SIZE.md}
+              color={hasReposted ? theme.colors.accent : theme.colors.textSecondary}
+            />
+            <Text style={[styles.actionText, {
+              color: hasReposted ? theme.colors.accent : theme.colors.textSecondary
+            }]}>
+              {formatNumber(repostsCount)}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Mensaje privado */}
+          {post.userId !== user?.uid && (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => {
+                if (postAuthor) {
+                  navigation.navigate('Chat', {
+                    recipientId: post.userId,
+                    recipientName: postAuthor.displayName || 'Usuario',
+                    recipientAvatar: {
+                      type: postAuthor.avatarType,
+                      id: postAuthor.avatarId,
+                      url: postAuthor.photoURL,
+                    },
+                  });
+                }
+              }}
+            >
+              <Ionicons
+                name="paper-plane-outline"
+                size={ICON_SIZE.md}
+                color={theme.colors.textSecondary}
+              />
+            </TouchableOpacity>
+          )}
+
+          {/* Compartir */}
           <TouchableOpacity style={styles.actionButton}>
             <Ionicons
-              name="share-outline"
+              name="share-social-outline"
               size={ICON_SIZE.md}
               color={theme.colors.textSecondary}
             />
-            <Text style={[styles.actionText, { color: theme.colors.textSecondary }]}>
-              Compartir
-            </Text>
           </TouchableOpacity>
         </View>
 

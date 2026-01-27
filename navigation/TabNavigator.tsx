@@ -4,6 +4,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '../contexts/ThemeContext';
+import { useUserProfile } from '../contexts/UserProfileContext';
+import { useScroll } from '../contexts/ScrollContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -14,6 +16,7 @@ import InboxStackNavigator from './InboxStackNavigator';
 import ProfileStackNavigator from './ProfileStackNavigator';
 import { MainStackParamList } from './MainStackNavigator';
 import CustomTabBar from '../components/CustomTabBar';
+import AvatarDisplay from '../components/avatars/AvatarDisplay';
 
 // Componentes dummy para pestañas que abren modales
 const SearchTabPlaceholder = () => null;
@@ -78,6 +81,8 @@ const CreateTabButton = (props: any) => {
 
 const TabNavigator: React.FC = () => {
   const { theme } = useTheme();
+  const { userProfile } = useUserProfile();
+  const { triggerScrollToTop } = useScroll();
   const { isDesktop, isTablet } = useResponsive();
   const insets = useSafeAreaInsets();
 
@@ -107,6 +112,28 @@ const TabNavigator: React.FC = () => {
           </View>
         ),
         tabBarIcon: ({ focused, color, size }) => {
+          // Para Profile, mostrar el avatar del usuario
+          if (route.name === 'Profile') {
+            return (
+              <View style={{
+                borderWidth: focused ? 2 : 0,
+                borderColor: theme.colors.accent,
+                borderRadius: 14,
+                padding: focused ? 1 : 0,
+              }}>
+                <AvatarDisplay
+                  size={24}
+                  avatarType={userProfile?.avatarType || 'predefined'}
+                  avatarId={userProfile?.avatarId || 'male'}
+                  photoURL={userProfile?.photoURL}
+                  photoURLThumbnail={userProfile?.photoURLThumbnail}
+                  backgroundColor={theme.colors.accent}
+                  showBorder={false}
+                />
+              </View>
+            );
+          }
+
           let iconName: keyof typeof Ionicons.glyphMap;
 
           switch (route.name) {
@@ -121,9 +148,6 @@ const TabNavigator: React.FC = () => {
               break;
             case 'Inbox':
               iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
-              break;
-            case 'Profile':
-              iconName = focused ? 'person' : 'person-outline';
               break;
             default:
               iconName = 'home-outline';
@@ -165,10 +189,20 @@ const TabNavigator: React.FC = () => {
         },
       })}
     >
-      <Tab.Screen 
-        name="Home" 
+      <Tab.Screen
+        name="Home"
         component={HomeStackNavigator}
         options={{ tabBarLabel: 'Inicio' }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Si ya estamos en Home, hacer scroll to top
+            const state = navigation.getState();
+            const homeRoute = state.routes.find((r: any) => r.name === 'Home');
+            if (state.index === 0 && homeRoute) {
+              triggerScrollToTop();
+            }
+          },
+        })}
       />
       <Tab.Screen
         name="Search"

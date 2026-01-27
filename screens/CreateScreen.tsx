@@ -73,11 +73,11 @@ const OFFICIAL_CATEGORIES = [
   { id: 'finanzas', name: 'Finanzas & Dinero', icon: 'cash-outline', customIcon: require('../assets/icons/category-trabajo.png'), slug: 'finanzas-dinero' },
   { id: 'laboral', name: 'Laboral', icon: 'briefcase-outline', customIcon: require('../assets/icons/category-laboral.png'), slug: 'laboral' },
   { id: 'salud', name: 'Salud & Bienestar', icon: 'fitness-outline', customIcon: require('../assets/icons/category-salud.png'), slug: 'salud-bienestar' },
-  { id: 'entretenimiento', name: 'Entretenimiento', icon: 'film-outline', slug: 'entretenimiento' },
+  { id: 'entretenimiento', name: 'Entretenimiento', icon: 'film-outline', customIcon: require('../assets/icons/category-entretenimiento.png'), slug: 'entretenimiento' },
   { id: 'gaming', name: 'Gaming & Tech', icon: 'game-controller-outline', customIcon: require('../assets/icons/category-gaming.png'), slug: 'gaming-tech' },
-  { id: 'educacion', name: 'Educación & Carrera', icon: 'school-outline', slug: 'educacion-carrera' },
-  { id: 'deportes', name: 'Deportes', icon: 'football-outline', slug: 'deportes' },
-  { id: 'confesiones', name: 'Confesiones', icon: 'eye-off-outline', slug: 'confesiones' },
+  { id: 'educacion', name: 'Educación & Carrera', icon: 'school-outline', customIcon: require('../assets/icons/category-educacion.png'), slug: 'educacion-carrera' },
+  { id: 'deportes', name: 'Deportes', icon: 'football-outline', customIcon: require('../assets/icons/category-deportes.png'), slug: 'deportes' },
+  { id: 'confesiones', name: 'Confesiones', icon: 'eye-off-outline', customIcon: require('../assets/icons/category-confesiones.png'), slug: 'confesiones' },
   { id: 'debates', name: 'Debates Calientes', icon: 'flame-outline', slug: 'debates-calientes' },
   { id: 'viajes', name: 'Viajes & Lugares', icon: 'airplane-outline', customIcon: require('../assets/icons/category-viajes.png'), slug: 'viajes-lugares' },
   { id: 'comida', name: 'Comida & Cocina', icon: 'restaurant-outline', slug: 'comida-cocina' },
@@ -499,29 +499,23 @@ const CreateScreen: React.FC = () => {
       setSelectedTags([]);
 
       // Navegar al feed de la categoría para ver la publicación
-      const communitySlug = selectedCommunity.slug;
-      (navigation as any).reset({
-        index: 0,
-        routes: [
-          {
-            name: 'Main',
-            state: {
-              routes: [
-                {
-                  name: 'Home',
-                  state: {
-                    routes: [
-                      { name: 'Landing' },
-                      { name: 'Feed', params: { communitySlug } },
-                    ],
-                    index: 1,
-                  },
-                },
-              ],
+      // Usar goBack y luego navegar para evitar problemas con reset
+      navigation.goBack();
+
+      // Pequeño delay para asegurar que la navegación anterior se complete
+      setTimeout(() => {
+        try {
+          (navigation as any).navigate('Main', {
+            screen: 'Home',
+            params: {
+              screen: 'Feed',
+              params: { communitySlug: selectedCommunity.slug },
             },
-          },
-        ],
-      });
+          });
+        } catch (navError) {
+          console.log('Navigation after publish completed with fallback');
+        }
+      }, 100);
 
     } catch (error) {
       console.error('Error publishing post:', error);

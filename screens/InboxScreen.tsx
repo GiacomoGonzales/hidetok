@@ -295,7 +295,6 @@ const InboxScreen: React.FC = () => {
       {!isDesktop && (
         <Header
           onNotificationsPress={handleNotificationsPress}
-          showMessagesIcon={true}
         />
       )}
 

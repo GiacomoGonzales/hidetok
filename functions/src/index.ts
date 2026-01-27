@@ -1,13 +1,12 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 
-// Inicializar Firebase Admin
-admin.initializeApp();
+// Inicializar Firebase Admin solo si no está inicializado
+if (admin.apps.length === 0) {
+  admin.initializeApp();
+}
+
 const db = admin.firestore();
-
-// Crear cliente de Expo
-const expo = new Expo();
 
 // Tipos de notificación y sus mensajes
 const notificationMessages: Record<string, (senderName: string) => { title: string; body: string }> = {
@@ -41,10 +40,54 @@ const notificationMessages: Record<string, (senderName: string) => { title: stri
   }),
 };
 
+// Verificar si es un token válido de Expo
+function isExpoPushToken(token: string): boolean {
+  return typeof token === 'string' &&
+    (token.startsWith('ExponentPushToken[') || token.startsWith('ExpoPushToken['));
+}
+
+// Función helper para enviar push via Expo API directamente
+async function sendExpoPush(pushToken: string, title: string, body: string, data: any): Promise<any> {
+  if (!isExpoPushToken(pushToken)) {
+    console.error('Token de push inválido:', pushToken);
+    return null;
+  }
+
+  const message = {
+    to: pushToken,
+    sound: 'default',
+    title,
+    body,
+    data,
+    badge: 1,
+    priority: 'high',
+  };
+
+  try {
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(message),
+    });
+
+    const result = await response.json();
+    console.log('Expo push response:', result);
+    return result;
+  } catch (error) {
+    console.error('Error enviando push:', error);
+    return null;
+  }
+}
+
 // Cloud Function que se dispara cuando se crea una notificación
-export const sendPushNotification = functions.firestore
-  .document('notifications/{notificationId}')
-  .onCreate(async (snapshot, context) => {
+export const sendPushNotification = functions
+  .region('us-central1')
+  .firestore.document('notifications/{notificationId}')
+  .onCreate(async (snapshot: any, context: any) => {
     const notification = snapshot.data();
     const { recipientId, senderId, senderName, type, postId, commentId, conversationId } = notification;
 
@@ -65,12 +108,6 @@ export const sendPushNotification = functions.firestore
         return null;
       }
 
-      // Verificar que el token es válido para Expo
-      if (!Expo.isExpoPushToken(pushToken)) {
-        console.error('Token de push inválido:', pushToken);
-        return null;
-      }
-
       // Obtener el mensaje según el tipo de notificación
       const messageGenerator = notificationMessages[type];
       if (!messageGenerator) {
@@ -80,54 +117,30 @@ export const sendPushNotification = functions.firestore
 
       const { title, body } = messageGenerator(senderName || 'Alguien');
 
-      // Construir el mensaje de push
-      const message: ExpoPushMessage = {
-        to: pushToken,
-        sound: 'default',
-        title,
-        body,
-        data: {
-          type,
-          postId: postId || null,
-          commentId: commentId || null,
-          senderId: senderId || null,
-          conversationId: conversationId || null,
-          notificationId: context.params.notificationId,
-        },
-        badge: 1,
-        priority: 'high',
+      const data = {
+        type,
+        postId: postId || null,
+        commentId: commentId || null,
+        senderId: senderId || null,
+        conversationId: conversationId || null,
+        notificationId: context.params.notificationId,
       };
 
-      // Enviar la notificación
-      const chunks = expo.chunkPushNotifications([message]);
-      const tickets = [];
+      const result = await sendExpoPush(pushToken, title, body, data);
 
-      for (const chunk of chunks) {
-        try {
-          const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-          tickets.push(...ticketChunk);
-          console.log('Push notification enviada:', ticketChunk);
-        } catch (error) {
-          console.error('Error enviando push notification:', error);
+      if (result?.data?.status === 'error') {
+        console.error('Error en push:', result.data.message);
+
+        if (result.data.details?.error === 'DeviceNotRegistered') {
+          await db.collection('users').doc(recipientId).update({
+            pushToken: admin.firestore.FieldValue.delete(),
+          });
+          console.log('Token inválido eliminado del usuario');
         }
       }
 
-      // Verificar errores en los tickets
-      for (const ticket of tickets) {
-        if ((ticket as any).status === 'error') {
-          console.error('Error en ticket:', (ticket as any).message);
-
-          // Si el token es inválido, eliminarlo del usuario
-          if ((ticket as any).details?.error === 'DeviceNotRegistered') {
-            await db.collection('users').doc(recipientId).update({
-              pushToken: admin.firestore.FieldValue.delete(),
-            });
-            console.log('Token inválido eliminado del usuario');
-          }
-        }
-      }
-
-      return { success: true, tickets };
+      console.log('Push notification enviada para:', type);
+      return { success: true };
     } catch (error) {
       console.error('Error en sendPushNotification:', error);
       return { success: false, error };
@@ -135,11 +148,12 @@ export const sendPushNotification = functions.firestore
   });
 
 // Cloud Function para enviar push de nuevos mensajes
-export const sendMessagePushNotification = functions.firestore
-  .document('conversations/{conversationId}/messages/{messageId}')
-  .onCreate(async (snapshot, context) => {
-    const message = snapshot.data();
-    const { senderId, text } = message;
+export const sendMessagePushNotification = functions
+  .region('us-central1')
+  .firestore.document('conversations/{conversationId}/messages/{messageId}')
+  .onCreate(async (snapshot: any, context: any) => {
+    const messageData = snapshot.data();
+    const { senderId, content } = messageData;
     const { conversationId } = context.params;
 
     try {
@@ -159,8 +173,6 @@ export const sendMessagePushNotification = functions.firestore
       const senderName = senderData?.displayName || 'Alguien';
 
       // Enviar push a todos los participantes excepto al sender
-      const messages: ExpoPushMessage[] = [];
-
       for (const participantId of participants) {
         if (participantId === senderId) continue;
 
@@ -168,35 +180,17 @@ export const sendMessagePushNotification = functions.firestore
         const participantData = participantDoc.data();
         const pushToken = participantData?.pushToken;
 
-        if (pushToken && Expo.isExpoPushToken(pushToken)) {
-          messages.push({
-            to: pushToken,
-            sound: 'default',
-            title: senderName,
-            body: text?.substring(0, 100) || 'Te envió un mensaje',
-            data: {
-              type: 'message',
-              conversationId,
-              senderId,
-            },
-            badge: 1,
-            priority: 'high',
-          });
+        if (pushToken) {
+          await sendExpoPush(
+            pushToken,
+            senderName,
+            content?.substring(0, 100) || 'Te envió un mensaje',
+            { type: 'message', conversationId, senderId }
+          );
         }
       }
 
-      if (messages.length === 0) {
-        return null;
-      }
-
-      // Enviar las notificaciones
-      const chunks = expo.chunkPushNotifications(messages);
-
-      for (const chunk of chunks) {
-        await expo.sendPushNotificationsAsync(chunk);
-      }
-
-      console.log(`Push notifications de mensaje enviadas a ${messages.length} usuarios`);
+      console.log('Push notifications de mensaje enviadas');
       return { success: true };
     } catch (error) {
       console.error('Error en sendMessagePushNotification:', error);

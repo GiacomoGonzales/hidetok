@@ -50,7 +50,7 @@ export const pushNotificationService = {
 
       // Obtener el token de Expo Push
       const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: '920ff7aa-c0a9-481d-82c0-4e3d57386175', // Tu project ID de EAS
+        projectId: '31297521-34c6-4238-af4f-e663953af31f', // EAS project ID from app.json
       });
 
       const token = tokenData.data;
@@ -74,7 +74,12 @@ export const pushNotificationService = {
   },
 
   // Guardar el token en el perfil del usuario
+  // TODO: Temporalmente deshabilitado - reactivar cuando se configuren las Cloud Functions
   savePushToken: async (userId: string, token: string): Promise<void> => {
+    // Deshabilitado temporalmente
+    console.log('⏸️ Push token saving disabled temporarily');
+    return;
+    /*
     try {
       const userRef = doc(db, 'users', userId);
       await updateDoc(userRef, {
@@ -85,6 +90,7 @@ export const pushNotificationService = {
     } catch (error) {
       console.error('Error guardando push token:', error);
     }
+    */
   },
 
   // Eliminar el token (logout)

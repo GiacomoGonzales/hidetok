@@ -58,7 +58,7 @@ service cloud.firestore {
       allow create: if isAuthenticated() &&
         request.resource.data.userId == request.auth.uid;
 
-      // El autor puede actualizar su post, o cualquiera puede actualizar contadores
+      // El autor puede actualizar su post, o cualquier usuario autenticado puede actualizar contadores
       allow update: if isAuthenticated() && (
         resource.data.userId == request.auth.uid ||
         // Permitir actualizar solo contadores (views, agreementCount, etc.)

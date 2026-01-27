@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -354,61 +353,42 @@ const UserProfileScreen: React.FC = () => {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Cover Photo */}
-        <View style={styles.coverPhotoContainer}>
-          {userProfile.coverPhotoURL ? (
-            <Image
-              source={{ uri: userProfile.coverPhotoURL }}
-              style={styles.coverPhoto}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-            />
-          ) : (
-            <View style={[styles.coverPhotoPlaceholder, { backgroundColor: theme.colors.surface }]}>
-              <View style={[styles.coverPhotoPattern, { backgroundColor: theme.colors.accent, opacity: 0.1 }]} />
-            </View>
-          )}
-        </View>
-
-        {/* Avatar y Info */}
+        {/* Información del perfil - estilo similar a ProfileScreen */}
         <View style={styles.profileInfo}>
-          {/* Avatar */}
-          <TouchableOpacity
-            style={styles.avatarSection}
-            onLongPress={handleAvatarLongPress}
-            delayLongPress={300}
-            activeOpacity={0.9}
-          >
-            <AvatarDisplay
-              size={scale(90)}
-              avatarType={userProfile.avatarType || 'predefined'}
-              avatarId={userProfile.avatarId || 'male'}
-              photoURL={userProfile.photoURL}
-              photoURLThumbnail={userProfile.photoURLThumbnail}
-              backgroundColor={theme.colors.accent}
-              showBorder={true}
-            />
-          </TouchableOpacity>
+          {/* Avatar centrado */}
+          <View style={styles.avatarSection}>
+            <TouchableOpacity
+              style={styles.avatarContainer}
+              onLongPress={handleAvatarLongPress}
+              delayLongPress={300}
+              activeOpacity={0.9}
+            >
+              <AvatarDisplay
+                size={100}
+                avatarType={userProfile.avatarType || 'predefined'}
+                avatarId={userProfile.avatarId || 'male'}
+                photoURL={userProfile.photoURL}
+                photoURLThumbnail={userProfile.photoURLThumbnail}
+                backgroundColor={theme.colors.accent}
+                showBorder={false}
+              />
+            </TouchableOpacity>
+          </View>
 
-          {/* Nombre y bio */}
-          <View style={styles.nameSection}>
-            <Text style={[styles.displayName, { color: theme.colors.text }]}>
-              {userProfile.displayName}
+          {/* Nombre */}
+          <Text style={[styles.displayName, { color: theme.colors.text }]}>
+            {userProfile.displayName}
+          </Text>
+
+          {/* Bio */}
+          {userProfile.bio && (
+            <Text style={[styles.bio, { color: theme.colors.text }]}>
+              {userProfile.bio}
             </Text>
-            {userProfile.bio && (
-              <Text style={[styles.bio, { color: theme.colors.text }]}>
-                {userProfile.bio}
-              </Text>
-            )}
+          )}
 
-            {/* Información adicional */}
-            <View style={styles.infoRow}>
-              <Ionicons name="calendar-outline" size={14} color={theme.colors.textSecondary} />
-              <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
-                Miembro desde {new Date(userProfile.createdAt.toDate()).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
-              </Text>
-            </View>
-
+          {/* Info adicional inline */}
+          <View style={styles.infoSection}>
             {userProfile.website && (
               <TouchableOpacity
                 style={styles.infoRow}
@@ -420,39 +400,39 @@ const UserProfileScreen: React.FC = () => {
                 }}
               >
                 <Ionicons name="link-outline" size={14} color={theme.colors.accent} />
-                <Text style={[styles.infoText, { color: theme.colors.accent }]}>
+                <Text style={[styles.infoText, { color: theme.colors.accent }]} numberOfLines={1}>
                   {userProfile.website}
                 </Text>
               </TouchableOpacity>
             )}
+            <View style={styles.infoRow}>
+              <Ionicons name="calendar-outline" size={14} color={theme.colors.textSecondary} />
+              <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
+                {userProfile.createdAt.toDate().toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
+              </Text>
+            </View>
           </View>
 
           {/* Estadísticas */}
-          <View style={styles.statsRow}>
-            <View style={styles.stat}>
+          <View style={styles.statsSection}>
+            <TouchableOpacity style={styles.stat} activeOpacity={0.7}>
               <Text style={[styles.statNumber, { color: theme.colors.text }]}>
                 {formatNumber(userProfile.posts)}
               </Text>
-              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
-                Posts
-              </Text>
-            </View>
-            <View style={styles.stat}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Posts</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.stat} activeOpacity={0.7}>
               <Text style={[styles.statNumber, { color: theme.colors.text }]}>
                 {formatNumber(userProfile.followers)}
               </Text>
-              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
-                Seguidores
-              </Text>
-            </View>
-            <View style={styles.stat}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Seguidores</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.stat} activeOpacity={0.7}>
               <Text style={[styles.statNumber, { color: theme.colors.text }]}>
                 {formatNumber(userProfile.following)}
               </Text>
-              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
-                Siguiendo
-              </Text>
-            </View>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Siguiendo</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Botones de acción */}
@@ -469,6 +449,7 @@ const UserProfileScreen: React.FC = () => {
                 ]}
                 onPress={handleToggleFollow}
                 disabled={isToggling}
+                activeOpacity={0.8}
               >
                 {isToggling ? (
                   <ActivityIndicator size="small" color={isFollowing ? theme.colors.text : 'white'} />
@@ -492,16 +473,11 @@ const UserProfileScreen: React.FC = () => {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[
-                  styles.messageButton,
-                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                ]}
+                style={[styles.messageButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
                 onPress={handleSendMessage}
+                activeOpacity={0.8}
               >
-                <Ionicons name="chatbubble-outline" size={18} color={theme.colors.text} />
-                <Text style={[styles.messageButtonText, { color: theme.colors.text }]}>
-                  Mensaje
-                </Text>
+                <Ionicons name="paper-plane-outline" size={20} color={theme.colors.text} />
               </TouchableOpacity>
             </View>
           )}
@@ -511,6 +487,7 @@ const UserProfileScreen: React.FC = () => {
               <TouchableOpacity
                 style={[styles.editProfileButton, { backgroundColor: theme.colors.accent }]}
                 onPress={() => navigation.navigate('Main', { screen: 'Profile' } as any)}
+                activeOpacity={0.8}
               >
                 <Text style={styles.editProfileButtonText}>Ver mi perfil</Text>
               </TouchableOpacity>
@@ -631,117 +608,110 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.base,
     fontWeight: FONT_WEIGHT.semibold,
   },
-  coverPhotoContainer: {
-    width: '100%',
-    height: 160,
-    position: 'relative',
-  },
-  coverPhoto: {
-    width: '100%',
-    height: '100%',
-  },
-  coverPhotoPlaceholder: {
-    width: '100%',
-    height: '100%',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  coverPhotoPattern: {
-    width: '200%',
-    height: '200%',
-    transform: [{ rotate: '45deg' }],
-  },
   profileInfo: {
-    paddingHorizontal: SPACING.lg,
-    marginTop: -45,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 16,
+    alignItems: 'center',
   },
   avatarSection: {
-    marginBottom: SPACING.md,
+    marginBottom: 16,
   },
-  nameSection: {
-    marginBottom: SPACING.lg,
+  avatarContainer: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
   displayName: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: FONT_WEIGHT.bold,
-    marginBottom: SPACING.xs,
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 4,
+    letterSpacing: -0.3,
+    textAlign: 'center',
   },
   bio: {
-    fontSize: FONT_SIZE.base,
-    lineHeight: scale(22),
-    marginBottom: SPACING.sm,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 16,
+  },
+  infoSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginBottom: 20,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(6),
-    marginTop: SPACING.xs,
+    gap: 4,
   },
   infoText: {
-    fontSize: FONT_SIZE.sm,
+    fontSize: 13,
   },
-  statsRow: {
+  statsSection: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: SPACING.md,
-    marginBottom: SPACING.md,
+    justifyContent: 'center',
+    gap: 32,
+    marginBottom: 20,
+    paddingVertical: 16,
+    width: '100%',
   },
   stat: {
     alignItems: 'center',
   },
   statNumber: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: FONT_WEIGHT.bold,
-    marginBottom: 4,
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 2,
   },
   statLabel: {
-    fontSize: FONT_SIZE.xs,
+    fontSize: 13,
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.lg,
+    gap: 10,
+    width: '100%',
+    paddingHorizontal: 8,
   },
   followButton: {
     flex: 1,
     flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: scale(10),
-    paddingHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    gap: SPACING.xs,
+    gap: 8,
   },
   followButtonText: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.semibold,
+    fontSize: 15,
+    fontWeight: '600',
   },
   messageButton: {
-    flex: 1,
-    flexDirection: 'row',
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: scale(10),
-    paddingHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    gap: SPACING.xs,
-  },
-  messageButtonText: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.semibold,
   },
   editProfileButton: {
     flex: 1,
-    paddingVertical: scale(10),
-    paddingHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
     alignItems: 'center',
   },
   editProfileButtonText: {
     color: 'white',
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.semibold,
+    fontSize: 15,
+    fontWeight: '600',
   },
   tabsContainer: {
     flexDirection: 'row',

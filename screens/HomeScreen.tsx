@@ -7,6 +7,7 @@ import { DocumentSnapshot } from 'firebase/firestore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useScroll } from '../contexts/ScrollContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { postsService, Post } from '../services/firestoreService';
@@ -28,6 +29,7 @@ const HomeScreen: React.FC = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
   const { userProfile } = useUserProfile();
+  const { scrollToTopTrigger } = useScroll();
   const { contentMaxWidth, isDesktop } = useResponsive();
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const route = useRoute<HomeScreenRouteProp>();
@@ -83,6 +85,13 @@ const HomeScreen: React.FC = () => {
     // TODO: Implementar pantalla de notificaciones
     console.log('Notificaciones - Próximamente');
   };
+
+  // Scroll to top cuando se dispara el trigger
+  useEffect(() => {
+    if (scrollToTopTrigger > 0 && flatListRef.current) {
+      flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+    }
+  }, [scrollToTopTrigger]);
 
   // Sincronizar el slug de la comunidad desde los parametros de navegacion
   useEffect(() => {
