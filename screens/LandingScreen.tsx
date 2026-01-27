@@ -335,32 +335,6 @@ const LandingScreen: React.FC = () => {
       <Text style={styles.heroTagline}>
         Be free to express
       </Text>
-
-      <View style={styles.featuresRow}>
-        <View style={styles.featureItem}>
-          <View style={[styles.featureIcon, { backgroundColor: 'rgba(139, 92, 246, 0.3)' }]}>
-            <Ionicons name="eye-off" size={scale(24)} color="#A78BFA" />
-          </View>
-          <Text style={styles.featureTitle}>Opinion</Text>
-          <Text style={styles.featureSubtitle}>anonima</Text>
-        </View>
-
-        <View style={styles.featureItem}>
-          <View style={[styles.featureIcon, { backgroundColor: 'rgba(16, 185, 129, 0.3)' }]}>
-            <Ionicons name="shield-checkmark" size={scale(24)} color="#34D399" />
-          </View>
-          <Text style={styles.featureTitle}>Reputacion</Text>
-          <Text style={styles.featureSubtitle}>sincera</Text>
-        </View>
-
-        <View style={styles.featureItem}>
-          <View style={[styles.featureIcon, { backgroundColor: 'rgba(251, 146, 60, 0.3)' }]}>
-            <Ionicons name="chatbubbles" size={scale(24)} color="#FB923C" />
-          </View>
-          <Text style={styles.featureTitle}>Debate</Text>
-          <Text style={styles.featureSubtitle}>real</Text>
-        </View>
-      </View>
     </LinearGradient>
   );
 
@@ -648,7 +622,6 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.regular,
     color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
-    marginBottom: SPACING.xl,
     fontStyle: 'italic',
   },
   featuresRow: {
