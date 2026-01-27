@@ -46,7 +46,7 @@ const linking: any = {
             screens: {
               Landing: '',
               Feed: 'feed/:communitySlug?',
-              HomeFeed: '',
+              HomeFeed: 'all',
             },
           },
           Create: 'create',

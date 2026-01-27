@@ -15,6 +15,7 @@ export const linking: LinkingOptions<any> = {
             screens: {
               Landing: 'home',
               Feed: 'feed/:communitySlug?',
+              HomeFeed: 'home/all',
             },
           },
           Profile: {
