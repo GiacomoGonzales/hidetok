@@ -327,7 +327,13 @@ const LandingScreen: React.FC = () => {
       end={{ x: 1, y: 1 }}
     >
       <Text style={styles.heroTitle}>
-        Opina. <Text style={styles.heroHighlight}>Publica.</Text> Conecta.
+        Exprésate <Text style={styles.heroHighlight}>libremente.</Text>
+      </Text>
+      <Text style={styles.heroSubtitle}>
+        Opina. Publica. Conecta.
+      </Text>
+      <Text style={styles.heroTagline}>
+        Be free to express
       </Text>
 
       <View style={styles.featuresRow}>
@@ -620,15 +626,30 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.lg,
   },
   heroTitle: {
-    fontSize: scale(26),
+    fontSize: scale(28),
     fontWeight: FONT_WEIGHT.bold,
     color: 'white',
     textAlign: 'center',
-    marginBottom: SPACING.xl,
+    marginBottom: SPACING.sm,
     letterSpacing: -0.5,
   },
   heroHighlight: {
     color: '#A78BFA',
+  },
+  heroSubtitle: {
+    fontSize: scale(16),
+    fontWeight: FONT_WEIGHT.medium,
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
+    marginBottom: SPACING.xs,
+  },
+  heroTagline: {
+    fontSize: scale(13),
+    fontWeight: FONT_WEIGHT.regular,
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
+    marginBottom: SPACING.xl,
+    fontStyle: 'italic',
   },
   featuresRow: {
     flexDirection: 'row',
