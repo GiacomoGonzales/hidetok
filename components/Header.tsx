@@ -68,7 +68,7 @@ const Header: React.FC<HeaderProps> = ({ onNotificationsPress }) => {
       }]}>
         <View style={styles.content}>
           {/* Logo */}
-          <TouchableOpacity onPress={handleLogoPress} activeOpacity={0.7}>
+          <TouchableOpacity onPress={handleLogoPress} activeOpacity={0.7} style={styles.logoContainer}>
             <Image
               source={require('../assets/logo.png')}
               style={styles.logo}
@@ -76,6 +76,7 @@ const Header: React.FC<HeaderProps> = ({ onNotificationsPress }) => {
               priority="high"
               cachePolicy="memory-disk"
             />
+            <Text style={[styles.logoText, { color: theme.colors.text }]}>HideTok</Text>
           </TouchableOpacity>
 
           {/* Actions */}
@@ -130,9 +131,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
   },
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
   logo: {
-    height: scale(36),
-    width: scale(36),
+    height: scale(32),
+    width: scale(32),
+  },
+  logoText: {
+    fontSize: FONT_SIZE.xl,
+    fontWeight: FONT_WEIGHT.bold,
+    letterSpacing: -0.5,
   },
   actions: {
     flexDirection: 'row',
