@@ -131,8 +131,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
   },
   logo: {
-    height: scale(28),
-    width: scale(100),
+    height: scale(36),
+    width: scale(36),
   },
   actions: {
     flexDirection: 'row',

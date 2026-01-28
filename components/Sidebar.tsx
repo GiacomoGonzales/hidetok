@@ -214,8 +214,8 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   logo: {
-    height: 28,
-    width: 100,
+    height: 36,
+    width: 36,
     marginBottom: SPACING.xs,
   },
   privacyBadge: {
