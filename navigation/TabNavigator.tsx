@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { TouchableOpacity, View, StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +18,7 @@ import { MainStackParamList } from './MainStackNavigator';
 import CustomTabBar from '../components/CustomTabBar';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
 import { useAuth } from '../contexts/AuthContext';
+import { messagesService } from '../services/messagesService';
 
 // Componentes dummy para pestañas que abren modales
 const SearchTabPlaceholder = () => null;
@@ -95,6 +96,22 @@ const TabNavigator: React.FC = () => {
   const { triggerScrollToTop } = useScroll();
   const { isDesktop, isTablet } = useResponsive();
   const insets = useSafeAreaInsets();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Suscribirse al conteo de mensajes no leídos
+  const activeUid = userProfile?.uid || user?.uid;
+  useEffect(() => {
+    if (!activeUid) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const unsubscribe = messagesService.subscribeToUnreadCount(activeUid, (count) => {
+      setUnreadCount(count);
+    });
+
+    return () => unsubscribe();
+  }, [activeUid]);
 
   // Calcular padding inferior para Android
   // Si insets.bottom > 0, el sistema ya reporta el safe area (navegación por gestos)
@@ -233,7 +250,19 @@ const TabNavigator: React.FC = () => {
       <Tab.Screen
         name="Inbox"
         component={InboxStackNavigator}
-        options={{ tabBarLabel: 'Inbox' }}
+        options={{
+          tabBarLabel: 'Inbox',
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: theme.colors.accent,
+            color: '#FFFFFF',
+            fontSize: 11,
+            fontWeight: '600',
+            minWidth: 18,
+            height: 18,
+            borderRadius: 9,
+          },
+        }}
         listeners={({ navigation }) => ({
           tabPress: (e) => {
             if (!user) {

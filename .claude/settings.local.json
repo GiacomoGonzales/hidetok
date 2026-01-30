@@ -46,7 +46,11 @@
       "Bash(\"C:/Users/giaco/AppData/Local/Android/Sdk/platform-tools/adb.exe\" install -r \"C:/Users/giaco/hidetok-simple/android/app/build/outputs/apk/release/app-release.apk\")",
       "Bash(vercel:*)",
       "Bash(firebase functions:delete:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(copy:*)",
+      "Bash(npx firebase deploy --only firestore:rules)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

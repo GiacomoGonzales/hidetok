@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserProfile } from '../contexts/UserProfileContext';
 import { useScroll } from '../contexts/ScrollContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { notificationService } from '../services/notificationService';
@@ -16,8 +17,16 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ onNotificationsPress }) => {
-  const { theme } = useTheme();
+  const { theme, setThemeMode } = useTheme();
   const { user } = useAuth();
+  const { hasHidiProfile, activeProfileType, switchIdentity } = useUserProfile();
+
+  const handleSwitchIdentity = () => {
+    switchIdentity();
+    // Cambiar tema: HIDI = oscuro, Real = claro
+    const nextType = activeProfileType === 'real' ? 'hidi' : 'real';
+    setThemeMode(nextType === 'hidi' ? 'dark' : 'light');
+  };
   const { triggerScrollToTop } = useScroll();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
@@ -81,6 +90,29 @@ const Header: React.FC<HeaderProps> = ({ onNotificationsPress }) => {
 
           {/* Actions */}
           <View style={styles.actions}>
+            {/* Switch Identity Button - solo visible si tiene perfil HIDI */}
+            {user && hasHidiProfile && (
+              <TouchableOpacity
+                style={[styles.switchButton, {
+                  backgroundColor: activeProfileType === 'hidi' ? theme.colors.accent + '20' : theme.colors.surface,
+                  borderColor: activeProfileType === 'hidi' ? theme.colors.accent : theme.colors.border,
+                }]}
+                onPress={handleSwitchIdentity}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={activeProfileType === 'hidi' ? 'eye-off' : 'eye'}
+                  size={ICON_SIZE.md}
+                  color={activeProfileType === 'hidi' ? theme.colors.accent : theme.colors.text}
+                />
+                <Text style={[styles.switchButtonText, {
+                  color: activeProfileType === 'hidi' ? theme.colors.accent : theme.colors.text,
+                }]}>
+                  {activeProfileType === 'hidi' ? 'HIDI' : 'Real'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
             {user ? (
               // Usuario autenticado: mostrar notificaciones
               <TouchableOpacity
@@ -143,7 +175,7 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize: FONT_SIZE.xl,
     fontWeight: FONT_WEIGHT.bold,
-    letterSpacing: -0.5,
+    letterSpacing: -1,
   },
   actions: {
     flexDirection: 'row',
@@ -168,6 +200,19 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: scale(10),
     fontWeight: FONT_WEIGHT.bold,
+  },
+  switchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(4),
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.full,
+    borderWidth: 1,
+  },
+  switchButtonText: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.semibold,
   },
   loginButton: {
     paddingHorizontal: SPACING.md,

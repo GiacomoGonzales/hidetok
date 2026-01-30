@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { useTheme, ThemeMode } from '../contexts/ThemeContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
@@ -22,7 +22,7 @@ import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 type SettingsNavigationProp = StackNavigationProp<ProfileStackParamList, 'Settings'>;
 
 const SettingsScreen: React.FC = () => {
-  const { theme, themeMode, setThemeMode } = useTheme();
+  const { theme } = useTheme();
   const { logout } = useAuth();
   const { userProfile } = useUserProfile();
   const navigation = useNavigation<SettingsNavigationProp>();
@@ -32,10 +32,6 @@ const SettingsScreen: React.FC = () => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
   const joinedCommunitiesCount = userProfile?.joinedCommunities?.length || 0;
-
-  const handleThemeChange = (mode: ThemeMode) => {
-    setThemeMode(mode);
-  };
 
   const handleAbout = () => {
     Alert.alert(
@@ -132,27 +128,6 @@ const SettingsScreen: React.FC = () => {
     </TouchableOpacity>
   );
 
-  const renderThemeOption = (mode: ThemeMode, label: string) => (
-    <TouchableOpacity
-      key={mode}
-      style={[styles.themeOption, { 
-        backgroundColor: themeMode === mode ? theme.colors.accent + '20' : 'transparent',
-        borderColor: themeMode === mode ? theme.colors.accent : theme.colors.border,
-      }]}
-      onPress={() => handleThemeChange(mode)}
-      activeOpacity={0.7}
-    >
-      <Text style={[styles.themeLabel, { 
-        color: themeMode === mode ? theme.colors.accent : theme.colors.text 
-      }]}>
-        {label}
-      </Text>
-      {themeMode === mode && (
-        <Ionicons name="checkmark" size={20} color={theme.colors.accent} />
-      )}
-    </TouchableOpacity>
-  );
-
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
@@ -175,37 +150,6 @@ const SettingsScreen: React.FC = () => {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Apariencia */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-            Apariencia
-          </Text>
-          
-          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
-            <View style={[styles.settingItem, { backgroundColor: 'transparent', borderBottomWidth: 0 }]}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="color-palette" size={20} color={theme.colors.accent} />
-                </View>
-                <View style={styles.settingText}>
-                  <Text style={[styles.settingTitle, { color: theme.colors.text }]}>
-                    Tema
-                  </Text>
-                  <Text style={[styles.settingSubtitle, { color: theme.colors.textSecondary }]}>
-                    Elige cómo se ve la app
-                  </Text>
-                </View>
-              </View>
-            </View>
-            
-            <View style={styles.themeOptions}>
-              {renderThemeOption('system', 'Sistema')}
-              {renderThemeOption('light', 'Claro')}
-              {renderThemeOption('dark', 'Oscuro')}
-            </View>
-          </View>
-        </View>
-
         {/* Contenido */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
@@ -431,24 +375,6 @@ const styles = StyleSheet.create({
   },
   arrow: {
     marginLeft: 8,
-  },
-  themeOptions: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    gap: 8,
-  },
-  themeOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  themeLabel: {
-    fontSize: 16,
-    fontWeight: '500',
   },
   versionContainer: {
     alignItems: 'center',

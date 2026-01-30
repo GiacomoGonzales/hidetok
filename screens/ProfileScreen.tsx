@@ -12,6 +12,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,7 +28,7 @@ import { likesService } from '../services/likesService';
 import { formatNumber } from '../data/mockData';
 import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import Header from '../components/Header';
-import AvatarPicker from '../components/avatars/AvatarPicker';
+import AvatarPicker, { isDiceBearUrl } from '../components/avatars/AvatarPicker';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
 import PostCard from '../components/PostCard';
 import ImageViewer from '../components/ImageViewer';
@@ -36,9 +37,9 @@ import { useResponsive } from '../hooks/useResponsive';
 type ProfileScreenNavigationProp = StackNavigationProp<ProfileStackParamList, 'ProfileMain'>;
 
 const ProfileScreen: React.FC = () => {
-  const { theme } = useTheme();
+  const { theme, setThemeMode } = useTheme();
   const { user, logout } = useAuth();
-  const { userProfile, loading: profileLoading, error: profileError, updateProfile } = useUserProfile();
+  const { userProfile, loading: profileLoading, error: profileError, updateProfile, hasHidiProfile, activeProfileType, switchIdentity } = useUserProfile();
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const insets = useSafeAreaInsets();
   const { isDesktop } = useResponsive();
@@ -84,21 +85,23 @@ const ProfileScreen: React.FC = () => {
     }
   }, [userProfile]);
 
-  // Cargar posts del usuario
+  // Cargar posts del usuario (usando uid del perfil activo)
   useEffect(() => {
     const loadUserPosts = async () => {
-      if (!user) return;
+      if (!user || !userProfile) return;
+
+      const activeUid = userProfile.uid;
 
       try {
         setLoadingPosts(true);
         setPostsError(null);
-        console.log('🔍 Cargando posts del usuario:', user.uid);
+        console.log('🔍 Cargando posts del usuario:', activeUid);
 
         // Cargar posts, reposts y liked posts en paralelo
         const [posts, reposts, likedPosts] = await Promise.all([
-          postsService.getByUserId(user.uid),
-          repostsService.getUserReposts(user.uid),
-          likesService.getUserLikedPostsWithData(user.uid)
+          postsService.getByUserId(activeUid),
+          repostsService.getUserReposts(activeUid),
+          likesService.getUserLikedPostsWithData(activeUid)
         ]);
 
         console.log('📋 Posts encontrados:', posts.length);
@@ -122,7 +125,7 @@ const ProfileScreen: React.FC = () => {
     };
 
     loadUserPosts();
-  }, [user, userProfile?.id]); // Recargar cuando cambie el usuario o se cree el perfil
+  }, [user, userProfile?.id, userProfile?.uid]); // Recargar cuando cambie el usuario, perfil o identidad activa
 
   // Scroll to top cuando se toca el tab de Profile estando ya en Profile
   // Si ya está arriba, refrescar la página
@@ -150,22 +153,29 @@ const ProfileScreen: React.FC = () => {
 
   // Función de navegación para el header
   const handleNotificationsPress = () => {
-    // TODO: Implementar pantalla de notificaciones
-    console.log('Notificaciones - Próximamente');
+    // Navegar desde ProfileStack → TabNavigator → Home → Notifications
+    const tabNavigation = navigation.getParent();
+    if (tabNavigation) {
+      (tabNavigation as any).navigate('Home', {
+        screen: 'Notifications',
+      });
+    }
   };
 
   // Función para recargar posts (útil después de crear un nuevo post)
   const refreshPosts = async () => {
-    if (!user) return;
+    if (!user || !userProfile) return;
+
+    const activeUid = userProfile.uid;
 
     try {
       setLoadingPosts(true);
 
       // Cargar posts, reposts y liked posts en paralelo
       const [posts, reposts, likedPosts] = await Promise.all([
-        postsService.getByUserId(user.uid),
-        repostsService.getUserReposts(user.uid),
-        likesService.getUserLikedPostsWithData(user.uid)
+        postsService.getByUserId(activeUid),
+        repostsService.getUserReposts(activeUid),
+        likesService.getUserLikedPostsWithData(activeUid)
       ]);
 
       setUserPosts(posts);
@@ -287,23 +297,30 @@ const ProfileScreen: React.FC = () => {
         updateData.photoURL = null;
         updateData.photoURLThumbnail = null;
       } else if (avatarData.type === 'custom' && avatarData.uri) {
-        console.log('📤 Subiendo imagen personalizada...');
-        console.log('📍 URI:', avatarData.uri);
+        if (isDiceBearUrl(avatarData.uri)) {
+          // DiceBear URL - guardar directo sin subir
+          updateData.photoURL = avatarData.uri;
+          updateData.photoURLThumbnail = null;
+          updateData.avatarId = null;
+        } else {
+          console.log('📤 Subiendo imagen personalizada...');
+          console.log('📍 URI:', avatarData.uri);
 
-        // Subir la imagen a Firebase Storage (ahora retorna fullSize y thumbnail)
-        const { fullSize, thumbnail } = await uploadProfileImageFromUri(avatarData.uri, user.uid);
+          // Subir la imagen a Firebase Storage (ahora retorna fullSize y thumbnail)
+          const { fullSize, thumbnail } = await uploadProfileImageFromUri(avatarData.uri, user.uid);
 
-        console.log('✅ Imagen subida exitosamente');
-        console.log('📎 Full size URL:', fullSize?.substring(0, 50));
-        console.log('📎 Thumbnail URL:', thumbnail?.substring(0, 50));
+          console.log('✅ Imagen subida exitosamente');
+          console.log('📎 Full size URL:', fullSize?.substring(0, 50));
+          console.log('📎 Thumbnail URL:', thumbnail?.substring(0, 50));
 
-        if (!fullSize) {
-          throw new Error('No se recibió URL de imagen');
+          if (!fullSize) {
+            throw new Error('No se recibió URL de imagen');
+          }
+
+          updateData.photoURL = fullSize;
+          updateData.photoURLThumbnail = thumbnail;
+          updateData.avatarId = null;
         }
-
-        updateData.photoURL = fullSize;
-        updateData.photoURLThumbnail = thumbnail;
-        updateData.avatarId = null;
       }
 
       console.log('💾 Guardando en perfil:', Object.keys(updateData));
@@ -328,7 +345,8 @@ const ProfileScreen: React.FC = () => {
   };
 
   const handlePrivateMessage = (userId: string, userData?: { displayName: string; avatarType?: string; avatarId?: string; photoURL?: string; photoURLThumbnail?: string }) => {
-    if (!user || user.uid === userId) return; // No enviar mensaje a sí mismo
+    const activeUid = userProfile?.uid || user?.uid;
+    if (!user || activeUid === userId) return; // No enviar mensaje a sí mismo
 
     // Navegar a la pantalla de conversación
     (navigation as any).navigate('Inbox', {
@@ -361,7 +379,7 @@ const ProfileScreen: React.FC = () => {
       case 'reposts':
         return userReposts;
       case 'photos':
-        return userPosts.filter(post => post.imageUrls && post.imageUrls.length > 0);
+        return userPosts.filter(post => (post.imageUrls && post.imageUrls.length > 0) || post.videoUrl);
       case 'polls':
         return userPosts.filter(post => post.poll);
       case 'likes':
@@ -578,6 +596,38 @@ const ProfileScreen: React.FC = () => {
             {userProfile.displayName}
           </Text>
 
+          {/* Badge de tipo de perfil - toca para cambiar */}
+          {hasHidiProfile && (
+            <TouchableOpacity
+              style={[styles.profileTypeBadge, {
+                backgroundColor: activeProfileType === 'hidi' ? theme.colors.accent + '20' : theme.colors.surface,
+                borderColor: activeProfileType === 'hidi' ? theme.colors.accent : theme.colors.border,
+              }]}
+              onPress={() => {
+                switchIdentity();
+                const nextType = activeProfileType === 'real' ? 'hidi' : 'real';
+                setThemeMode(nextType === 'hidi' ? 'dark' : 'light');
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeProfileType === 'hidi' ? 'eye-off' : 'eye'}
+                size={14}
+                color={activeProfileType === 'hidi' ? theme.colors.accent : theme.colors.textSecondary}
+              />
+              <Text style={[styles.profileTypeBadgeText, {
+                color: activeProfileType === 'hidi' ? theme.colors.accent : theme.colors.textSecondary,
+              }]}>
+                Perfil {activeProfileType === 'hidi' ? 'HIDI' : 'Real'}
+              </Text>
+              <Ionicons
+                name="swap-horizontal"
+                size={12}
+                color={activeProfileType === 'hidi' ? theme.colors.accent : theme.colors.textSecondary}
+              />
+            </TouchableOpacity>
+          )}
+
           {/* Badge anónimo */}
           {user?.isAnonymous && (
             <Text style={[styles.anonymousBadge, { color: theme.colors.textSecondary }]}>
@@ -595,12 +645,22 @@ const ProfileScreen: React.FC = () => {
           {/* Info adicional inline */}
           <View style={styles.infoSection}>
             {userProfile.website && (
-              <View style={styles.infoRow}>
+              <TouchableOpacity
+                style={styles.infoRow}
+                onPress={() => {
+                  let url = userProfile.website!.trim();
+                  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+                  Linking.openURL(url).catch(() =>
+                    Alert.alert('Error', 'No se pudo abrir el enlace')
+                  );
+                }}
+                activeOpacity={0.7}
+              >
                 <Ionicons name="link-outline" size={14} color={theme.colors.accent} />
                 <Text style={[styles.infoText, { color: theme.colors.accent }]} numberOfLines={1}>
                   {userProfile.website}
                 </Text>
-              </View>
+              </TouchableOpacity>
             )}
             <View style={styles.infoRow}>
               <Ionicons name="calendar-outline" size={14} color={theme.colors.textSecondary} />
@@ -630,6 +690,16 @@ const ProfileScreen: React.FC = () => {
               </Text>
               <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Siguiendo</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.stat}
+              activeOpacity={0.7}
+              onPress={() => (navigation as any).navigate('CommunitiesManagement')}
+            >
+              <Text style={[styles.statNumber, { color: theme.colors.text }]}>
+                {formatNumber(userProfile.joinedCommunities?.length || 0)}
+              </Text>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Comunidades</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Botones de acción */}
@@ -650,13 +720,29 @@ const ProfileScreen: React.FC = () => {
               <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
             </TouchableOpacity>
           </View>
+
+          {/* Botón Crear perfil HIDI - solo si no existe */}
+          {!hasHidiProfile && activeProfileType === 'real' && (
+            <View style={styles.hidiButtonContainer}>
+              <TouchableOpacity
+                style={[styles.hidiButton, { borderColor: theme.colors.accent }]}
+                onPress={() => (navigation as any).navigate('HidiCreation')}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="eye-off-outline" size={18} color={theme.colors.accent} />
+                <Text style={[styles.hidiButtonText, { color: theme.colors.accent }]}>
+                  Crear perfil HIDI
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Tabs de filtros */}
         <View style={[styles.tabsContainer, { borderBottomColor: theme.colors.border }]}>
           {renderTabButton('posts', 'document-text-outline', 'Posts')}
           {renderTabButton('reposts', 'repeat-outline', 'Repost')}
-          {renderTabButton('photos', 'image-outline', 'Fotos')}
+          {renderTabButton('photos', 'image-outline', 'Multimedia')}
           {renderTabButton('polls', 'stats-chart-outline', 'Encuestas')}
           {renderTabButton('likes', 'heart-outline', 'Me gusta')}
         </View>
@@ -727,7 +813,7 @@ const ProfileScreen: React.FC = () => {
                 {
                   activeTab === 'posts' ? 'Aún no tienes publicaciones' :
                   activeTab === 'reposts' ? 'No has reposteado nada' :
-                  activeTab === 'photos' ? 'No tienes publicaciones con fotos' :
+                  activeTab === 'photos' ? 'No tienes publicaciones con multimedia' :
                   activeTab === 'polls' ? 'No tienes publicaciones con encuestas' :
                   'No tienes publicaciones que te gusten'
                 }
@@ -736,7 +822,7 @@ const ProfileScreen: React.FC = () => {
                 {
                   activeTab === 'posts' ? '¡Comparte tu primer post anónimo!' :
                   activeTab === 'reposts' ? 'Comparte contenido de otros usuarios' :
-                  activeTab === 'photos' ? 'Crea un post con fotos' :
+                  activeTab === 'photos' ? 'Crea un post con fotos o videos' :
                   activeTab === 'polls' ? 'Crea una encuesta' :
                   'Dale me gusta a las publicaciones que te interesen'
                 }
@@ -825,6 +911,20 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     letterSpacing: -0.3,
   },
+  profileTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  profileTypeBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   anonymousBadge: {
     fontSize: 13,
     marginBottom: 8,
@@ -899,6 +999,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  hidiButtonContainer: {
+    width: '100%',
+    paddingHorizontal: 8,
+    marginTop: 12,
+  },
+  hidiButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+  },
+  hidiButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   tabsContainer: {
     flexDirection: 'row',

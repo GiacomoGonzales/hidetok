@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { messagesService, Conversation } from '../services/messagesService';
 import { InboxStackParamList } from '../navigation/InboxStackNavigator';
@@ -26,6 +27,7 @@ type InboxScreenNavigationProp = StackNavigationProp<InboxStackParamList, 'Inbox
 const InboxScreen: React.FC = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { userProfile } = useUserProfile();
   const navigation = useNavigation<InboxScreenNavigationProp>();
   const { isDesktop } = useResponsive();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -34,35 +36,37 @@ const InboxScreen: React.FC = () => {
 
   // Función de navegación para el header
   const handleNotificationsPress = () => {
-    const parentNav = navigation.getParent()?.getParent();
-    if (parentNav) {
-      (parentNav as any).navigate('Home', {
-        screen: 'HomeFeed',
-        params: { screen: 'Notifications' }
+    // Navegar desde InboxStack → TabNavigator → Home → Notifications
+    const tabNavigation = navigation.getParent();
+    if (tabNavigation) {
+      (tabNavigation as any).navigate('Home', {
+        screen: 'Notifications',
       });
     }
   };
 
   // Cargar conversaciones y suscribirse a cambios en tiempo real
+  const activeUid = userProfile?.uid || user?.uid;
+
   useEffect(() => {
-    if (!user) return;
+    if (!activeUid) return;
 
     setLoading(true);
 
-    // Suscribirse a conversaciones en tiempo real
-    const unsubscribe = messagesService.subscribeToConversations(user.uid, (newConversations) => {
+    // Suscribirse a conversaciones del perfil activo (real o hidi)
+    const unsubscribe = messagesService.subscribeToConversations(activeUid, (newConversations) => {
       setConversations(newConversations);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [activeUid]);
 
   const handleConversationPress = (conversation: Conversation) => {
-    if (!user) return;
+    if (!activeUid) return;
 
     // Obtener datos del otro usuario
-    const otherUserId = conversation.participants.find(id => id !== user.uid);
+    const otherUserId = conversation.participants.find(id => id !== activeUid);
     if (!otherUserId) return;
 
     const otherUserData = conversation.participantsData[otherUserId];
@@ -113,17 +117,17 @@ const InboxScreen: React.FC = () => {
   };
 
   const renderConversation = ({ item }: { item: Conversation }) => {
-    if (!user) return null;
+    if (!activeUid) return null;
 
     // Obtener datos del otro usuario
-    const otherUserId = item.participants.find(id => id !== user.uid);
+    const otherUserId = item.participants.find(id => id !== activeUid);
     if (!otherUserId) return null;
 
     const otherUserData = item.participantsData[otherUserId];
     if (!otherUserData) return null;
 
     const lastMessage = item.lastMessage;
-    const hasUnread = lastMessage && !lastMessage.read && lastMessage.senderId !== user.uid;
+    const hasUnread = lastMessage && !lastMessage.read && lastMessage.senderId !== activeUid;
 
     return (
       <TouchableOpacity

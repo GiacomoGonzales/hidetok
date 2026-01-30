@@ -24,6 +24,8 @@ import { useResponsive } from '../hooks/useResponsive';
 import AvatarPicker from '../components/avatars/AvatarPicker';
 import { uploadProfileImageFromUri } from '../services/storageService';
 import { scale } from '../utils/scale';
+import { isDiceBearUrl } from '../components/avatars/AvatarPicker';
+import { COUNTRIES, Country } from '../data/countries';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -36,7 +38,6 @@ const OnboardingScreen: React.FC = () => {
 
   const [step, setStep] = useState(1);
   const [realName, setRealName] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [birthDay, setBirthDay] = useState('');
   const [birthMonth, setBirthMonth] = useState('');
   const [birthYear, setBirthYear] = useState('');
@@ -47,6 +48,9 @@ const OnboardingScreen: React.FC = () => {
   const [selectedAvatarType, setSelectedAvatarType] = useState<'predefined' | 'custom'>('predefined');
   const [selectedAvatarId, setSelectedAvatarId] = useState('male');
   const [customAvatarUri, setCustomAvatarUri] = useState<string | null>(null);
+  const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
+  const [showCountryModal, setShowCountryModal] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
   const [uploading, setUploading] = useState(false);
   const [completed, setCompleted] = useState(false);
 
@@ -70,7 +74,6 @@ const OnboardingScreen: React.FC = () => {
   }, []);
 
   const maxRealNameLength = 50;
-  const maxDisplayNameLength = 30;
   const maxBioLength = 150;
 
   // Año máximo: hace 13 años (edad mínima)
@@ -146,6 +149,12 @@ const OnboardingScreen: React.FC = () => {
     }
   };
 
+  const filteredCountries = countrySearch.trim()
+    ? COUNTRIES.filter(c =>
+        c.name.toLowerCase().includes(countrySearch.trim().toLowerCase())
+      )
+    : COUNTRIES;
+
   const getBirthDateISO = () => {
     if (birthDay && birthMonth && birthYear) {
       return `${birthYear}-${birthMonth}-${birthDay}`;
@@ -179,15 +188,6 @@ const OnboardingScreen: React.FC = () => {
         Alert.alert('Nombre muy corto', 'Tu nombre debe tener al menos 2 caracteres');
         return;
       }
-      // Validar alias
-      if (!displayName.trim()) {
-        Alert.alert('Alias requerido', 'Por favor ingresa un alias para continuar');
-        return;
-      }
-      if (displayName.trim().length < 3) {
-        Alert.alert('Alias muy corto', 'Tu alias debe tener al menos 3 caracteres');
-        return;
-      }
       // Validar fecha de nacimiento
       if (!birthDay || !birthMonth || !birthYear) {
         Alert.alert('Fecha requerida', 'Por favor ingresa tu fecha de nacimiento completa');
@@ -196,6 +196,11 @@ const OnboardingScreen: React.FC = () => {
       // Validar género
       if (!gender) {
         Alert.alert('Género requerido', 'Por favor selecciona tu género');
+        return;
+      }
+      // Validar país
+      if (!selectedCountry) {
+        Alert.alert('País requerido', 'Por favor selecciona tu país');
         return;
       }
       setStep(2);
@@ -207,18 +212,25 @@ const OnboardingScreen: React.FC = () => {
       try {
         let updateData: any = {
           realName: realName.trim(),
-          displayName: displayName.trim(),
+          displayName: realName.trim(),
           birthDate: getBirthDateISO(),
           gender: gender,
           bio: bio.trim(),
+          country: selectedCountry?.code || '',
+          countryName: selectedCountry?.name || '',
           avatarType: selectedAvatarType,
           hasCompletedCommunityOnboarding: true,
         };
 
-        // Si es avatar personalizado, subir imagen
+        // Si es avatar personalizado, subir imagen o usar DiceBear URL directo
         if (selectedAvatarType === 'custom' && customAvatarUri) {
-          const photoURL = await uploadProfileImageFromUri(customAvatarUri, user.uid);
-          updateData.photoURL = photoURL;
+          if (isDiceBearUrl(customAvatarUri)) {
+            updateData.photoURL = customAvatarUri;
+          } else {
+            const { fullSize, thumbnail } = await uploadProfileImageFromUri(customAvatarUri, user.uid);
+            updateData.photoURL = fullSize;
+            updateData.photoURLThumbnail = thumbnail;
+          }
         } else {
           // Avatar predefinido
           updateData.avatarId = selectedAvatarId;
@@ -282,17 +294,17 @@ const OnboardingScreen: React.FC = () => {
           Bienvenido a HideTok
         </Text>
         <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-          La red social donde puedes ser tú mismo, completamente anónimo
+          Configura tu perfil principal. Después podrás crear un perfil HIDI anónimo desde tu perfil.
         </Text>
       </View>
 
-      {/* Nombre Real (Privado) */}
+      {/* Nombre (se muestra públicamente) */}
       <View style={styles.inputSection}>
         <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
           Tu nombre
         </Text>
         <Text style={[styles.inputHint, { color: theme.colors.textSecondary }]}>
-          Este nombre es privado y no se mostrará a otros usuarios.
+          Este nombre se mostrará en tu perfil público.
         </Text>
         <TextInput
           style={[styles.input, {
@@ -300,37 +312,15 @@ const OnboardingScreen: React.FC = () => {
             borderColor: theme.colors.border,
             color: theme.colors.text,
           }]}
-          placeholder="Tu nombre real"
+          placeholder="Tu nombre completo"
           placeholderTextColor={theme.colors.textSecondary}
           value={realName}
           onChangeText={setRealName}
           maxLength={maxRealNameLength}
           autoCapitalize="words"
         />
-      </View>
-
-      {/* Alias (Público) */}
-      <View style={styles.inputSection}>
-        <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
-          Elige tu alias
-        </Text>
-        <Text style={[styles.inputHint, { color: theme.colors.textSecondary }]}>
-          Este será tu nombre público en HideTok. No uses tu nombre real.
-        </Text>
-        <TextInput
-          style={[styles.input, {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
-            color: theme.colors.text,
-          }]}
-          placeholder="Ej: Usuario123, Anónimo99..."
-          placeholderTextColor={theme.colors.textSecondary}
-          value={displayName}
-          onChangeText={setDisplayName}
-          maxLength={maxDisplayNameLength}
-        />
         <Text style={[styles.charCounter, { color: theme.colors.textSecondary }]}>
-          {displayName.length}/{maxDisplayNameLength}
+          {realName.length}/{maxRealNameLength}
         </Text>
       </View>
 
@@ -471,6 +461,34 @@ const OnboardingScreen: React.FC = () => {
             </Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* País */}
+      <View style={styles.inputSection}>
+        <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
+          País
+        </Text>
+        <TouchableOpacity
+          style={[styles.countrySelector, {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+          }]}
+          onPress={() => {
+            setCountrySearch('');
+            setShowCountryModal(true);
+          }}
+        >
+          {selectedCountry ? (
+            <Text style={[styles.countrySelectorText, { color: theme.colors.text }]}>
+              {selectedCountry.flag}  {selectedCountry.name}
+            </Text>
+          ) : (
+            <Text style={[styles.countrySelectorText, { color: theme.colors.textSecondary }]}>
+              Selecciona tu país
+            </Text>
+          )}
+          <Ionicons name="chevron-down" size={18} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       {/* Espacio extra cuando el teclado está abierto */}
@@ -741,6 +759,71 @@ const OnboardingScreen: React.FC = () => {
                 </TouchableOpacity>
               )}
               style={styles.dateModalList}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+      {/* Modal para selección de país */}
+      <Modal
+        visible={showCountryModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCountryModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.dateModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowCountryModal(false)}
+        >
+          <View
+            style={[styles.countryModalContent, { backgroundColor: theme.colors.surface }]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={[styles.dateModalHeader, { borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.dateModalTitle, { color: theme.colors.text }]}>
+                Selecciona tu país
+              </Text>
+              <TouchableOpacity onPress={() => setShowCountryModal(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <View style={[styles.countrySearchContainer, { borderBottomColor: theme.colors.border }]}>
+              <Ionicons name="search" size={18} color={theme.colors.textSecondary} />
+              <TextInput
+                style={[styles.countrySearchInput, { color: theme.colors.text }]}
+                placeholder="Buscar país..."
+                placeholderTextColor={theme.colors.textSecondary}
+                value={countrySearch}
+                onChangeText={setCountrySearch}
+                autoFocus
+              />
+              {countrySearch.length > 0 && (
+                <TouchableOpacity onPress={() => setCountrySearch('')}>
+                  <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <FlatList
+              data={filteredCountries}
+              keyExtractor={(item) => item.code}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.dateModalItem, { borderBottomColor: theme.colors.border }]}
+                  onPress={() => {
+                    setSelectedCountry(item);
+                    setShowCountryModal(false);
+                  }}
+                >
+                  <Text style={[styles.dateModalItemText, { color: theme.colors.text }]}>
+                    {item.flag}  {item.name}
+                  </Text>
+                  {selectedCountry?.code === item.code && (
+                    <Ionicons name="checkmark" size={20} color={theme.colors.accent} />
+                  )}
+                </TouchableOpacity>
+              )}
+              style={styles.dateModalList}
+              keyboardShouldPersistTaps="handled"
             />
           </View>
         </TouchableOpacity>
@@ -1023,6 +1106,36 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: scale(15),
     fontWeight: '600',
+  },
+  countrySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: scale(14),
+    paddingHorizontal: scale(14),
+    borderRadius: scale(12),
+    borderWidth: scale(1),
+  },
+  countrySelectorText: {
+    fontSize: scale(15),
+  },
+  countryModalContent: {
+    borderTopLeftRadius: scale(16),
+    borderTopRightRadius: scale(16),
+    maxHeight: '75%',
+  },
+  countrySearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(10),
+    borderBottomWidth: 1,
+    gap: scale(8),
+  },
+  countrySearchInput: {
+    flex: 1,
+    fontSize: scale(15),
+    paddingVertical: scale(4),
   },
 });
 

@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DocumentSnapshot } from 'firebase/firestore';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserProfile } from '../contexts/UserProfileContext';
 import { useCommunity } from '../hooks/useCommunities';
 import { useCommunities } from '../hooks/useCommunities';
 import { postsService, Post } from '../services/firestoreService';
@@ -31,13 +32,14 @@ type CommunityScreenNavigationProp = StackNavigationProp<MainStackParamList>;
 const CommunityScreen: React.FC = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { userProfile } = useUserProfile();
   const navigation = useNavigation<CommunityScreenNavigationProp>();
   const route = useRoute<CommunityScreenRouteProp>();
   const insets = useSafeAreaInsets();
 
   const { communityId } = route.params;
   const { community, isLoading: communityLoading, error: communityError } = useCommunity(communityId);
-  const { joinCommunity, leaveCommunity, isMember } = useCommunities(user?.uid);
+  const { joinCommunity, leaveCommunity, isMember } = useCommunities(userProfile?.uid);
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);

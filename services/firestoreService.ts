@@ -4,6 +4,7 @@ import {
   addDoc,
   getDoc,
   getDocs,
+  setDoc,
   updateDoc,
   deleteDoc,
   query,
@@ -94,6 +95,14 @@ export interface UserProfile {
   joinedCommunities: string[]; // Array de communityIds
   primaryCommunity?: string; // ID de la comunidad principal (la primera elegida)
   hasCompletedCommunityOnboarding?: boolean; // Si ya eligió comunidades
+
+  // === País ===
+  country?: string; // Código ISO del país (ej: 'AR', 'MX')
+  countryName?: string; // Nombre del país (ej: 'Argentina')
+
+  // === HIDI: Sistema de doble identidad ===
+  profileType?: 'real' | 'hidi'; // Tipo de perfil
+  linkedAccountId?: string; // uid del perfil vinculado (real↔hidi)
 }
 
 export interface Comment {
@@ -500,13 +509,55 @@ export const usersService = {
   create: (data: Omit<UserProfile, 'id'>) => firestoreService.create<UserProfile>('users', data),
   getById: (id: string) => firestoreService.getById<UserProfile>('users', id),
   getByUid: async (uid: string) => {
-    const users = await firestoreService.getMany<UserProfile>('users', 
+    const users = await firestoreService.getMany<UserProfile>('users',
       [{ field: 'uid', operator: '==', value: uid }]
     );
     return users.length > 0 ? users[0] : null;
   },
   update: (id: string, data: Partial<UserProfile>) => firestoreService.update<UserProfile>('users', id, data),
   delete: (id: string) => firestoreService.delete('users', id),
+
+  // === HIDI: Métodos para perfil HIDI ===
+  getHidiProfile: async (realUid: string): Promise<UserProfile | null> => {
+    const hidiUid = `hidi_${realUid}`;
+    const users = await firestoreService.getMany<UserProfile>('users',
+      [{ field: 'uid', operator: '==', value: hidiUid }]
+    );
+    return users.length > 0 ? users[0] : null;
+  },
+
+  createHidiProfile: async (realUid: string, data: {
+    displayName: string;
+    bio: string;
+    avatarType?: 'predefined' | 'custom';
+    avatarId?: string;
+    photoURL?: string;
+  }): Promise<string> => {
+    const hidiUid = `hidi_${realUid}`;
+    const hidiProfileData: Record<string, any> = {
+      uid: hidiUid,
+      displayName: data.displayName,
+      email: '',
+      bio: data.bio,
+      avatarType: data.avatarType || 'predefined',
+      avatarId: data.avatarId || 'male',
+      followers: 0,
+      following: 0,
+      posts: 0,
+      joinedCommunities: [],
+      hasCompletedCommunityOnboarding: true,
+      profileType: 'hidi',
+      linkedAccountId: realUid,
+    };
+
+    // Only include photoURL if it has a value (Firestore rejects undefined)
+    if (data.photoURL) {
+      hidiProfileData.photoURL = data.photoURL;
+    }
+
+    const docId = await firestoreService.create<UserProfile>('users', hidiProfileData as any);
+    return docId;
+  },
 };
 
 export const commentsService = {

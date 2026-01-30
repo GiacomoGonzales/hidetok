@@ -57,11 +57,18 @@ const createNotification = async (
       return null;
     }
 
-    const notificationData: Omit<Notification, 'id'> = {
+    const notificationData: Record<string, any> = {
       ...notification,
       read: false,
       createdAt: Timestamp.now(),
     };
+
+    // Remove undefined values (Firestore rejects them)
+    Object.keys(notificationData).forEach(key => {
+      if (notificationData[key] === undefined) {
+        delete notificationData[key];
+      }
+    });
 
     const docRef = await addDoc(collection(db, 'notifications'), notificationData);
     console.log('🔔 Notificación creada:', notification.type);

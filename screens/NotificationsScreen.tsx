@@ -13,6 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { notificationService, Notification, NotificationType } from '../services/notificationService';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
@@ -85,7 +86,11 @@ const getNotificationMessage = (notification: Notification): string => {
 const NotificationsScreen: React.FC = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { userProfile } = useUserProfile();
   const { isDesktop } = useResponsive();
+
+  // Usar el UID del perfil activo (real o HIDI)
+  const activeUid = userProfile?.uid || user?.uid;
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
 
@@ -94,17 +99,17 @@ const NotificationsScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
-  // Suscripción en tiempo real a notificaciones
+  // Suscripción en tiempo real a notificaciones del perfil activo
   useEffect(() => {
-    if (!user) {
+    if (!activeUid) {
       setLoading(false);
       return;
     }
 
-    console.log('🔔 Suscribiendo a notificaciones para:', user.uid);
+    console.log('🔔 Suscribiendo a notificaciones para:', activeUid);
 
     const unsubscribe = notificationService.subscribeToNotifications(
-      user.uid,
+      activeUid,
       (newNotifications) => {
         console.log('🔔 Notificaciones recibidas:', newNotifications.length);
         setNotifications(newNotifications);
@@ -118,7 +123,7 @@ const NotificationsScreen: React.FC = () => {
       console.log('🔔 Desuscribiendo de notificaciones');
       unsubscribe();
     };
-  }, [user]);
+  }, [activeUid]);
 
   const handleNotificationsPress = () => {
     navigation.goBack();
@@ -141,16 +146,15 @@ const NotificationsScreen: React.FC = () => {
 
   // Marcar todas como leídas
   const handleMarkAllAsRead = async () => {
-    if (!user) return;
-    await notificationService.markAllAsRead(user.uid);
+    if (!activeUid) return;
+    await notificationService.markAllAsRead(activeUid);
   };
 
   // Refresh manual
   const handleRefresh = async () => {
-    if (!user) return;
+    if (!activeUid) return;
     setRefreshing(true);
-    // La suscripción se encargará de actualizar los datos
-    const result = await notificationService.getNotifications(user.uid, 50);
+    const result = await notificationService.getNotifications(activeUid, 50);
     setNotifications(result.notifications);
     setRefreshing(false);
   };

@@ -16,7 +16,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
+import { useCommunities } from '../hooks/useCommunities';
 import { communityService, Community } from '../services/communityService';
 import { searchUsers, searchPosts, getTrendingPosts, getPopularHashtags, getPostsByHashtag, Post, UserProfile, PopularHashtag } from '../services/firestoreService';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
@@ -28,6 +31,9 @@ type SearchCategory = 'comunidades' | 'usuarios' | 'posts';
 
 const SearchScreen: React.FC = () => {
   const { theme } = useTheme();
+  const { user } = useAuth();
+  const { userProfile } = useUserProfile();
+  const { joinCommunity, leaveCommunity, isMember } = useCommunities(userProfile?.uid);
   const { isDesktop } = useResponsive();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
@@ -43,6 +49,7 @@ const SearchScreen: React.FC = () => {
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
   const [loadingHashtagPosts, setLoadingHashtagPosts] = useState(false);
 
   // Manejar el botón de retroceso de Android
@@ -166,6 +173,22 @@ const SearchScreen: React.FC = () => {
     }
   };
 
+  const handleToggleJoin = async (communityId: string) => {
+    if (!user || !communityId || joiningId) return;
+    setJoiningId(communityId);
+    try {
+      if (isMember(communityId)) {
+        await leaveCommunity(communityId);
+      } else {
+        await joinCommunity(communityId);
+      }
+    } catch (error) {
+      console.error('Error toggling community membership:', error);
+    } finally {
+      setJoiningId(null);
+    }
+  };
+
   const clearHashtagSelection = () => {
     setSelectedHashtag(null);
     setHashtagPosts([]);
@@ -177,7 +200,7 @@ const SearchScreen: React.FC = () => {
       <View style={[styles.header, {
         backgroundColor: theme.colors.background,
         borderBottomColor: theme.colors.border,
-        paddingTop: Platform.OS === 'android' ? insets.top + 8 : 12,
+        paddingTop: insets.top + 8,
       }]}>
         {/* Fila superior con título y botón cerrar */}
         <View style={styles.headerTop}>
@@ -508,7 +531,36 @@ const SearchScreen: React.FC = () => {
                           </Text>
                         </View>
                       </View>
-                      <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+                      {user && community.id && (
+                        joiningId === community.id ? (
+                          <ActivityIndicator size="small" color={theme.colors.accent} style={{ marginLeft: 8 }} />
+                        ) : isMember(community.id) ? (
+                          <TouchableOpacity
+                            style={[styles.joinButton, {
+                              backgroundColor: theme.colors.surface,
+                              borderColor: theme.colors.border,
+                              borderWidth: 1,
+                            }]}
+                            onPress={(e) => { e.stopPropagation?.(); handleToggleJoin(community.id!); }}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="checkmark" size={14} color={theme.colors.textSecondary} />
+                            <Text style={[styles.joinButtonText, { color: theme.colors.textSecondary }]}>Miembro</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            style={[styles.joinButton, { backgroundColor: theme.colors.accent }]}
+                            onPress={(e) => { e.stopPropagation?.(); handleToggleJoin(community.id!); }}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="add" size={14} color="white" />
+                            <Text style={[styles.joinButtonText, { color: 'white' }]}>Unirse</Text>
+                          </TouchableOpacity>
+                        )
+                      )}
+                      {!user && (
+                        <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+                      )}
                     </TouchableOpacity>
                   ))
                 )}
@@ -825,6 +877,20 @@ const styles = StyleSheet.create({
   },
   postStatText: {
     fontSize: 12,
+  },
+  // Join button
+  joinButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+    marginLeft: 8,
+  },
+  joinButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   // No results
   noResults: {

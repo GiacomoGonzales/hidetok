@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { communityService, Community } from '../services/communityService';
 
 // Mapa de slug a icono correcto de Ionicons
@@ -42,12 +42,34 @@ interface UseCommunitiesReturn {
   getCommunityBySlug: (slug: string) => Community | undefined;
 }
 
+// Caché en memoria de comunidades por identidad para cambio instantáneo
+const userCommunitiesCache = new Map<string, Community[]>();
+
 export function useCommunities(userId?: string): UseCommunitiesReturn {
   const [communities, setCommunities] = useState<Community[]>([]);
   const [officialCommunities, setOfficialCommunities] = useState<Community[]>([]);
-  const [userCommunities, setUserCommunities] = useState<Community[]>([]);
+  const [userCommunities, setUserCommunities] = useState<Community[]>(
+    () => (userId ? userCommunitiesCache.get(userId) || [] : [])
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Wrapper que actualiza estado + caché
+  const updateUserCommunities = useCallback((updater: Community[] | ((prev: Community[]) => Community[])) => {
+    setUserCommunities(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (userId) {
+        userCommunitiesCache.set(userId, next);
+      }
+      return next;
+    });
+  }, [userId]);
+
+  // Restaurar caché instantáneamente al cambiar de identidad
+  useEffect(() => {
+    const cached = userId ? userCommunitiesCache.get(userId) : undefined;
+    setUserCommunities(cached || []);
+  }, [userId]);
 
   const refreshCommunities = useCallback(async () => {
     setIsLoading(true);
@@ -76,7 +98,9 @@ export function useCommunities(userId?: string): UseCommunitiesReturn {
       // Cargar comunidades a las que el usuario se ha unido
       if (userId) {
         const userComms = await communityService.getJoinedCommunities(userId);
-        setUserCommunities(userComms);
+        updateUserCommunities(userComms);
+      } else {
+        updateUserCommunities([]);
       }
     } catch (err) {
       console.error('Error loading communities:', err);
@@ -84,7 +108,7 @@ export function useCommunities(userId?: string): UseCommunitiesReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [userId]);
+  }, [userId, updateUserCommunities]);
 
   // Cargar comunidades al montar
   useEffect(() => {
@@ -100,10 +124,10 @@ export function useCommunities(userId?: string): UseCommunitiesReturn {
     try {
       await communityService.joinCommunity(userId, communityId);
 
-      // Actualizar lista local
+      // Actualizar lista local + caché
       const community = communities.find(c => c.id === communityId);
       if (community) {
-        setUserCommunities(prev => [...prev, { ...community, memberCount: community.memberCount + 1 }]);
+        updateUserCommunities(prev => [...prev, { ...community, memberCount: community.memberCount + 1 }]);
         setCommunities(prev =>
           prev.map(c => c.id === communityId ? { ...c, memberCount: c.memberCount + 1 } : c)
         );
@@ -113,7 +137,7 @@ export function useCommunities(userId?: string): UseCommunitiesReturn {
       setError('Error al unirse a la comunidad');
       throw err;
     }
-  }, [userId, communities]);
+  }, [userId, communities, updateUserCommunities]);
 
   const leaveCommunity = useCallback(async (communityId: string) => {
     if (!userId) return;
@@ -121,8 +145,8 @@ export function useCommunities(userId?: string): UseCommunitiesReturn {
     try {
       await communityService.leaveCommunity(userId, communityId);
 
-      // Actualizar lista local
-      setUserCommunities(prev => prev.filter(c => c.id !== communityId));
+      // Actualizar lista local + caché
+      updateUserCommunities(prev => prev.filter(c => c.id !== communityId));
       setCommunities(prev =>
         prev.map(c => c.id === communityId ? { ...c, memberCount: Math.max(0, c.memberCount - 1) } : c)
       );
@@ -131,7 +155,7 @@ export function useCommunities(userId?: string): UseCommunitiesReturn {
       setError('Error al salir de la comunidad');
       throw err;
     }
-  }, [userId]);
+  }, [userId, updateUserCommunities]);
 
   const isMember = useCallback((communityId: string): boolean => {
     return userCommunities.some(c => c.id === communityId);

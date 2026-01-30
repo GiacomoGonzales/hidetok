@@ -750,18 +750,24 @@ const PostDetailScreen: React.FC = () => {
           </TouchableOpacity>
 
           {/* Mensaje privado */}
-          {post.userId !== user?.uid && (
+          {post.userId !== (userProfile?.uid || user?.uid) && (
             <TouchableOpacity
               style={styles.actionButton}
               onPress={() => {
                 if (postAuthor) {
-                  navigation.navigate('Chat', {
-                    recipientId: post.userId,
-                    recipientName: postAuthor.displayName || 'Usuario',
-                    recipientAvatar: {
-                      type: postAuthor.avatarType,
-                      id: postAuthor.avatarId,
-                      url: postAuthor.photoURL,
+                  (navigation as any).navigate('Main', {
+                    screen: 'Inbox',
+                    params: {
+                      screen: 'Conversation',
+                      params: {
+                        otherUserId: post.userId,
+                        otherUserData: {
+                          displayName: postAuthor.displayName || 'Usuario',
+                          avatarType: postAuthor.avatarType,
+                          avatarId: postAuthor.avatarId,
+                          photoURL: postAuthor.photoURL,
+                        },
+                      },
                     },
                   });
                 }

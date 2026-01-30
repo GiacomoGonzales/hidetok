@@ -329,6 +329,36 @@ class MessagesService {
   }
 
   /**
+   * Suscribirse al conteo de mensajes no leídos
+   */
+  subscribeToUnreadCount(
+    userId: string,
+    callback: (count: number) => void
+  ): () => void {
+    try {
+      const conversationsRef = collection(db, 'conversations');
+      const q = query(
+        conversationsRef,
+        where('participants', 'array-contains', userId)
+      );
+
+      return onSnapshot(q, (querySnapshot) => {
+        let unreadCount = 0;
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.lastMessage && !data.lastMessage.read && data.lastMessage.senderId !== userId) {
+            unreadCount++;
+          }
+        });
+        callback(unreadCount);
+      });
+    } catch (error) {
+      console.error('Error suscribiéndose a conteo de no leídos:', error);
+      return () => {};
+    }
+  }
+
+  /**
    * Eliminar una conversación
    */
   async deleteConversation(conversationId: string): Promise<void> {

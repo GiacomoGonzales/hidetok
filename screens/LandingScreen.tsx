@@ -1,12 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   Dimensions,
   ActivityIndicator,
+  RefreshControl,
+  ViewabilityConfig,
+  ViewToken,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
@@ -19,7 +23,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { useScroll } from '../contexts/ScrollContext';
 import { communityService, Community } from '../services/communityService';
+import { useCommunities } from '../hooks/useCommunities';
 import { postsService, Post } from '../services/firestoreService';
+import { DocumentSnapshot } from 'firebase/firestore';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
 import PostCard from '../components/PostCard';
 import Header from '../components/Header';
@@ -241,13 +247,22 @@ const LandingScreen: React.FC = () => {
   const { scrollToTopTrigger } = useScroll();
   const navigation = useNavigation<LandingScreenNavigationProp>();
   const insets = useSafeAreaInsets();
-  const scrollViewRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList>(null);
+
+  const { joinCommunity, leaveCommunity, isMember } = useCommunities(userProfile?.uid);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
 
   const [trendingPost, setTrendingPost] = useState<Post | null>(null);
   const [featuredPost, setFeaturedPost] = useState<Post | null>(null);
   const [feedPosts, setFeedPosts] = useState<Post[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [visiblePostIds, setVisiblePostIds] = useState<Set<string>>(new Set());
+  const visiblePostIdsRef = useRef<Set<string>>(new Set());
+  const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
     loadData();
@@ -256,13 +271,15 @@ const LandingScreen: React.FC = () => {
   // Scroll to top cuando se dispara el trigger
   useEffect(() => {
     if (scrollToTopTrigger > 0) {
-      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     }
   }, [scrollToTopTrigger]);
 
-  const loadData = async () => {
+  const loadData = async (isRefresh = false) => {
     try {
-      setLoading(true);
+      if (!isRefresh) {
+        setLoading(true);
+      }
 
       // Cargar comunidades
       const allCommunities = await communityService.getCommunities();
@@ -271,6 +288,10 @@ const LandingScreen: React.FC = () => {
       // Cargar posts trending y destacado
       const postsResult = await postsService.getPublicPostsPaginated(20);
       const posts = postsResult?.documents || [];
+
+      // Guardar cursor para paginación
+      setLastDoc(postsResult?.lastDoc || null);
+      setHasMore((postsResult?.documents || []).length >= 20);
 
       if (posts.length > 0) {
         // Post con mas engagement como "Tema del dia"
@@ -287,13 +308,79 @@ const LandingScreen: React.FC = () => {
         const featuredId = sorted[1]?.id;
         const feedFiltered = posts.filter(p => p.id !== trendingId && p.id !== featuredId);
         setFeedPosts(feedFiltered);
+      } else {
+        setFeedPosts([]);
+        setTrendingPost(null);
+        setFeaturedPost(null);
       }
     } catch (error) {
       console.error('Error loading landing data:', error);
     } finally {
-      setLoading(false);
+      if (!isRefresh) {
+        setLoading(false);
+      }
     }
   };
+
+  const loadMorePosts = useCallback(async () => {
+    if (loadingMore || !hasMore || !lastDoc) return;
+
+    setLoadingMore(true);
+    try {
+      const postsResult = await postsService.getPublicPostsPaginated(20, lastDoc);
+      const newPosts = postsResult?.documents || [];
+
+      if (newPosts.length > 0) {
+        // Excluir trending y featured que ya se muestran arriba
+        const trendingId = trendingPost?.id;
+        const featuredId = featuredPost?.id;
+        const filtered = newPosts.filter(p => p.id !== trendingId && p.id !== featuredId);
+
+        setFeedPosts(prev => [...prev, ...filtered]);
+        setLastDoc(postsResult?.lastDoc || null);
+      }
+
+      setHasMore(newPosts.length >= 20);
+    } catch (error) {
+      console.error('Error loading more posts:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, lastDoc, trendingPost, featuredPost]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData(true);
+    setRefreshing(false);
+  }, []);
+
+  // Viewability config for video visibility tracking
+  const viewabilityConfig = useRef<ViewabilityConfig>({
+    itemVisiblePercentThreshold: 50,
+  }).current;
+
+  const visibilityUpdateTimeout = useRef<NodeJS.Timeout | null>(null);
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    const ids = new Set<string>();
+    viewableItems.forEach((item) => {
+      if (item.isViewable && item.item?.id) {
+        ids.add(item.item.id);
+      }
+    });
+    visiblePostIdsRef.current = ids;
+
+    // Debounce state update to avoid constant re-renders while scrolling
+    if (visibilityUpdateTimeout.current) {
+      clearTimeout(visibilityUpdateTimeout.current);
+    }
+    visibilityUpdateTimeout.current = setTimeout(() => {
+      setVisiblePostIds(new Set(ids));
+    }, 200);
+  }).current;
+
+  const viewabilityConfigCallbackPairs = useRef([
+    { viewabilityConfig, onViewableItemsChanged },
+  ]).current;
 
   const handleCategoryPress = (category: typeof LANDING_CATEGORIES[0]) => {
     // Pasar el communitySlug ya que los posts se guardan con este campo
@@ -357,10 +444,28 @@ const LandingScreen: React.FC = () => {
       handleRegister();
       return;
     }
-    const tabNavigation = navigation.getParent();
-    const mainNavigation = tabNavigation?.getParent();
-    if (mainNavigation) {
-      (mainNavigation as any).navigate('Chat', { recipientId: userId, recipientData: userData });
+    (navigation as any).navigate('Inbox', {
+      screen: 'Conversation',
+      params: {
+        otherUserId: userId,
+        otherUserData: userData,
+      },
+    });
+  };
+
+  const handleToggleJoin = async (communityId: string) => {
+    if (!user || !communityId || joiningId) return;
+    setJoiningId(communityId);
+    try {
+      if (isMember(communityId)) {
+        await leaveCommunity(communityId);
+      } else {
+        await joinCommunity(communityId);
+      }
+    } catch (error) {
+      console.error('Error toggling community membership:', error);
+    } finally {
+      setJoiningId(null);
     }
   };
 
@@ -376,10 +481,7 @@ const LandingScreen: React.FC = () => {
       handleRegister();
       return;
     }
-    const tabNavigation = navigation.getParent();
-    if (tabNavigation) {
-      (tabNavigation as any).navigate('Notifications');
-    }
+    navigation.navigate('Notifications' as any);
   };
 
   const renderHero = () => (
@@ -561,6 +663,26 @@ const LandingScreen: React.FC = () => {
                   {cat.memberCount >= 1000 ? (cat.memberCount / 1000).toFixed(1) + 'K' : cat.memberCount} miembros
                 </Text>
               </View>
+              {user && cat.id && (
+                joiningId === cat.id ? (
+                  <ActivityIndicator size="small" color={theme.colors.accent} />
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.communityChipJoin, {
+                      backgroundColor: isMember(cat.id) ? theme.colors.surface : theme.colors.accent,
+                      borderColor: isMember(cat.id) ? theme.colors.border : theme.colors.accent,
+                    }]}
+                    onPress={(e) => { e.stopPropagation?.(); handleToggleJoin(cat.id!); }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={isMember(cat.id) ? 'checkmark' : 'add'}
+                      size={scale(14)}
+                      color={isMember(cat.id) ? theme.colors.textSecondary : 'white'}
+                    />
+                  </TouchableOpacity>
+                )
+              )}
             </TouchableOpacity>
           );
         })}
@@ -654,33 +776,37 @@ const LandingScreen: React.FC = () => {
     );
   };
 
-  const renderFeed = () => {
-    if (feedPosts.length === 0) return null;
-
-    return (
-      <>
-        {/* Separador visual */}
-        <View style={[styles.feedSeparator, { backgroundColor: theme.colors.surface }]} />
-
-        <View style={styles.feedContainer}>
-          <View style={styles.feedHeader}>
-            <Text style={[styles.feedTitle, { color: theme.colors.text }]}>
-              Publicaciones recientes
-            </Text>
+  const listHeader = useMemo(() => (
+    <>
+      {renderHero()}
+      {renderCategories()}
+      {renderCommunityCategories()}
+      {renderTrendingTopic()}
+      {renderFeaturedOpinion()}
+      {feedPosts.length > 0 && (
+        <>
+          <View style={[styles.feedSeparator, { backgroundColor: theme.colors.surface }]} />
+          <View style={styles.feedContainer}>
+            <View style={styles.feedHeader}>
+              <Text style={[styles.feedTitle, { color: theme.colors.text }]}>
+                Publicaciones recientes
+              </Text>
+            </View>
           </View>
-          {feedPosts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              onComment={handleComment}
-              onPrivateMessage={handlePrivateMessage}
-              onPress={handlePostPress}
-            />
-          ))}
-        </View>
-      </>
-    );
-  };
+        </>
+      )}
+    </>
+  ), [theme, trendingPost, featuredPost, feedPosts.length > 0, userCreatedCommunities, isMember, joiningId, user]);
+
+  const renderPostItem = useCallback(({ item }: { item: Post }) => (
+    <PostCard
+      post={item}
+      onComment={handleComment}
+      onPrivateMessage={handlePrivateMessage}
+      onPress={handlePostPress}
+      isVisible={visiblePostIds.has(item.id || '')}
+    />
+  ), [visiblePostIds]);
 
   if (loading) {
     return (
@@ -693,19 +819,32 @@ const LandingScreen: React.FC = () => {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Header onNotificationsPress={handleNotificationsPress} />
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.scrollView}
+      <FlatList
+        ref={flatListRef}
+        data={feedPosts}
+        renderItem={renderPostItem}
+        keyExtractor={(item) => item.id || Math.random().toString()}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={loadingMore ? (
+          <View style={styles.loadingMore}>
+            <ActivityIndicator size="small" color={theme.colors.accent} />
+          </View>
+        ) : null}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + SPACING.xl }}
-      >
-        {renderHero()}
-        {renderCategories()}
-        {renderCommunityCategories()}
-        {renderTrendingTopic()}
-        {renderFeaturedOpinion()}
-        {renderFeed()}
-      </ScrollView>
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.colors.accent}
+            colors={[theme.colors.accent]}
+          />
+        }
+        onEndReached={loadMorePosts}
+        onEndReachedThreshold={0.5}
+        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
+        removeClippedSubviews={true}
+      />
     </View>
   );
 };
@@ -890,6 +1029,15 @@ const styles = StyleSheet.create({
   communityChipMembers: {
     fontSize: scale(10),
   },
+  communityChipJoin: {
+    width: scale(24),
+    height: scale(24),
+    borderRadius: scale(12),
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    marginLeft: SPACING.xs,
+  },
 
   // Trending Topic
   trendingContainer: {
@@ -992,6 +1140,10 @@ const styles = StyleSheet.create({
   feedTitle: {
     fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
+  },
+  loadingMore: {
+    paddingVertical: SPACING.xl,
+    alignItems: 'center',
   },
 });
 

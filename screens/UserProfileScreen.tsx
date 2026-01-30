@@ -185,7 +185,7 @@ const UserProfileScreen: React.FC = () => {
       case 'reposts':
         return userReposts;
       case 'photos':
-        return userPosts.filter(post => post.imageUrls && post.imageUrls.length > 0);
+        return userPosts.filter(post => (post.imageUrls && post.imageUrls.length > 0) || post.videoUrl);
       case 'polls':
         return userPosts.filter(post => post.poll);
       case 'likes':
@@ -433,6 +433,12 @@ const UserProfileScreen: React.FC = () => {
               </Text>
               <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Siguiendo</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.stat} activeOpacity={0.7}>
+              <Text style={[styles.statNumber, { color: theme.colors.text }]}>
+                {formatNumber(userProfile.joinedCommunities?.length || 0)}
+              </Text>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Comunidades</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Botones de acción */}
@@ -448,28 +454,21 @@ const UserProfileScreen: React.FC = () => {
                   },
                 ]}
                 onPress={handleToggleFollow}
-                disabled={isToggling}
                 activeOpacity={0.8}
               >
-                {isToggling ? (
-                  <ActivityIndicator size="small" color={isFollowing ? theme.colors.text : 'white'} />
-                ) : (
-                  <>
-                    <Ionicons
-                      name={isFollowing ? 'checkmark' : 'person-add'}
-                      size={18}
-                      color={isFollowing ? theme.colors.text : 'white'}
-                    />
-                    <Text
-                      style={[
-                        styles.followButtonText,
-                        { color: isFollowing ? theme.colors.text : 'white' },
-                      ]}
-                    >
-                      {isFollowing ? 'Siguiendo' : 'Seguir'}
-                    </Text>
-                  </>
-                )}
+                <Ionicons
+                  name={isFollowing ? 'checkmark' : 'person-add'}
+                  size={18}
+                  color={isFollowing ? theme.colors.text : 'white'}
+                />
+                <Text
+                  style={[
+                    styles.followButtonText,
+                    { color: isFollowing ? theme.colors.text : 'white' },
+                  ]}
+                >
+                  {isFollowing ? 'Siguiendo' : 'Seguir'}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -499,7 +498,7 @@ const UserProfileScreen: React.FC = () => {
         <View style={[styles.tabsContainer, { borderBottomColor: theme.colors.border }]}>
           {renderTabButton('posts', 'document-text-outline', 'Posts')}
           {renderTabButton('reposts', 'repeat-outline', 'Repost')}
-          {renderTabButton('photos', 'image-outline', 'Fotos')}
+          {renderTabButton('photos', 'image-outline', 'Multimedia')}
           {renderTabButton('polls', 'stats-chart-outline', 'Encuestas')}
           {renderTabButton('likes', 'heart-outline', 'Me gusta')}
         </View>

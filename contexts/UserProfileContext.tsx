@@ -1,16 +1,24 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { usersService, UserProfile } from '../services/firestoreService';
 import { Timestamp } from 'firebase/firestore';
 import { updateUserCache } from '../hooks/useUserById';
 
+type ProfileType = 'real' | 'hidi';
+
 interface UserProfileContextType {
-  userProfile: UserProfile | null;
+  userProfile: UserProfile | null; // Perfil activo (real o hidi)
+  realProfile: UserProfile | null;
+  hidiProfile: UserProfile | null;
+  activeProfileType: ProfileType;
+  hasHidiProfile: boolean;
   loading: boolean;
   error: string | null;
   updateProfile: (updates: Partial<Omit<UserProfile, 'id' | 'uid' | 'createdAt'>>) => Promise<void>;
   updateLocalProfile: (updates: Partial<UserProfile>) => void;
   refreshProfile: () => void;
+  switchIdentity: () => void;
+  setHidiProfile: (profile: UserProfile) => void;
 }
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
@@ -29,15 +37,22 @@ interface UserProfileProviderProps {
 
 export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ children }) => {
   const { user } = useAuth();
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [realProfile, setRealProfile] = useState<UserProfile | null>(null);
+  const [hidiProfile, setHidiProfileState] = useState<UserProfile | null>(null);
+  const [activeProfileType, setActiveProfileType] = useState<ProfileType>('real');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  // Perfil activo basado en el tipo seleccionado
+  const userProfile = activeProfileType === 'hidi' && hidiProfile ? hidiProfile : realProfile;
+
   useEffect(() => {
-    const loadUserProfile = async () => {
+    const loadUserProfiles = async () => {
       if (!user) {
-        setUserProfile(null);
+        setRealProfile(null);
+        setHidiProfileState(null);
+        setActiveProfileType('real');
         setLoading(false);
         return;
       }
@@ -46,14 +61,13 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
         setLoading(true);
         setError(null);
 
-        console.log('🔄 [UserProfileContext] Cargando perfil para usuario:', user.uid);
+        console.log('🔄 [UserProfileContext] Cargando perfiles para usuario:', user.uid);
 
-        // Buscar perfil existente
+        // Buscar perfil real existente
         let profile = await usersService.getByUid(user.uid);
 
         // Si no existe, crear uno nuevo
         if (!profile) {
-          // Preparar datos base del perfil
           const baseProfileData = {
             uid: user.uid,
             displayName: user.displayName || user.email?.split('@')[0] || 'Usuario Anónimo',
@@ -62,11 +76,12 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
             followers: 0,
             following: 0,
             posts: 0,
+            joinedCommunities: [] as string[],
             createdAt: Timestamp.now(),
             updatedAt: Timestamp.now(),
+            profileType: 'real' as const,
           };
 
-          // Agregar campos de avatar según el tipo de autenticación
           const newProfileData: Omit<UserProfile, 'id'> = user.photoURL
             ? {
                 ...baseProfileData,
@@ -89,57 +104,71 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
 
           console.log('✅ [UserProfileContext] Perfil creado exitosamente:', profileId);
         } else {
-          console.log('📥 [UserProfileContext] Perfil cargado:', profile.displayName);
+          console.log('📥 [UserProfileContext] Perfil real cargado:', profile.displayName);
         }
 
-        setUserProfile(profile);
+        setRealProfile(profile);
 
-        // Actualizar el caché de useUserById con el perfil cargado
+        // Actualizar caché con perfil real
         if (profile) {
           updateUserCache(user.uid, profile);
-          console.log('✅ [UserProfileContext] Caché inicializado con perfil cargado');
+        }
+
+        // Intentar cargar perfil HIDI
+        try {
+          const hidi = await usersService.getHidiProfile(user.uid);
+          if (hidi) {
+            console.log('🎭 [UserProfileContext] Perfil HIDI cargado:', hidi.displayName);
+            setHidiProfileState(hidi);
+            updateUserCache(`hidi_${user.uid}`, hidi);
+          } else {
+            console.log('🎭 [UserProfileContext] No hay perfil HIDI');
+            setHidiProfileState(null);
+          }
+        } catch (hidiErr) {
+          console.log('🎭 [UserProfileContext] Error cargando perfil HIDI (ignorado):', hidiErr);
+          setHidiProfileState(null);
         }
       } catch (err) {
         console.error('❌ [UserProfileContext] Error loading user profile:', err);
         setError('Error al cargar el perfil de usuario');
-        setUserProfile(null);
+        setRealProfile(null);
+        setHidiProfileState(null);
       } finally {
         setLoading(false);
       }
     };
 
-    loadUserProfile();
+    loadUserProfiles();
   }, [user, refreshTrigger]);
 
   const updateProfile = async (updates: Partial<Omit<UserProfile, 'id' | 'uid' | 'createdAt'>>) => {
-    if (!userProfile?.id || !user) {
+    const currentProfile = userProfile;
+    if (!currentProfile?.id || !user) {
       console.error('❌ [UserProfileContext] No se puede actualizar: no hay perfil o usuario');
       return;
     }
 
     try {
-      console.log('🔄 [UserProfileContext] Actualizando perfil con:', updates);
+      console.log('🔄 [UserProfileContext] Actualizando perfil activo con:', updates);
 
-      // Agregar updatedAt al update
       const updatesWithTimestamp = {
         ...updates,
         updatedAt: Timestamp.now(),
       };
 
-      // Actualizar estado local inmediatamente ANTES de Firestore para UI instantánea
-      const newProfile = { ...userProfile, ...updatesWithTimestamp };
-      console.log('✅ [UserProfileContext] Actualizando estado local:', {
-        displayName: newProfile.displayName,
-        avatarType: newProfile.avatarType,
-      });
-      setUserProfile(newProfile);
+      // Actualizar estado local inmediatamente
+      const newProfile = { ...currentProfile, ...updatesWithTimestamp };
+      if (activeProfileType === 'hidi') {
+        setHidiProfileState(newProfile);
+        updateUserCache(`hidi_${user.uid}`, newProfile);
+      } else {
+        setRealProfile(newProfile);
+        updateUserCache(user.uid, newProfile);
+      }
 
-      // Actualizar el caché de useUserById para que los posts se actualicen
-      updateUserCache(user.uid, newProfile);
-      console.log('✅ [UserProfileContext] Caché de usuario actualizado para posts');
-
-      // Actualizar en Firestore en segundo plano
-      await usersService.update(userProfile.id, updatesWithTimestamp);
+      // Actualizar en Firestore
+      await usersService.update(currentProfile.id, updatesWithTimestamp);
       console.log('✅ [UserProfileContext] Perfil actualizado en Firestore');
     } catch (err) {
       console.error('❌ [UserProfileContext] Error updating profile:', err);
@@ -153,12 +182,14 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
       return;
     }
 
-    console.log('🔄 [UserProfileContext] Actualizando perfil localmente:', updates);
     const newProfile = { ...userProfile, ...updates };
-    setUserProfile(newProfile);
-
-    // Actualizar el caché de useUserById también
-    updateUserCache(user.uid, updates);
+    if (activeProfileType === 'hidi') {
+      setHidiProfileState(newProfile);
+      updateUserCache(`hidi_${user.uid}`, updates);
+    } else {
+      setRealProfile(newProfile);
+      updateUserCache(user.uid, updates);
+    }
   };
 
   const refreshProfile = () => {
@@ -166,13 +197,39 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     setRefreshTrigger(prev => prev + 1);
   };
 
+  const switchIdentity = useCallback(() => {
+    if (!hidiProfile) {
+      console.warn('⚠️ [UserProfileContext] No hay perfil HIDI para cambiar');
+      return;
+    }
+    setActiveProfileType(prev => {
+      const next = prev === 'real' ? 'hidi' : 'real';
+      console.log(`🎭 [UserProfileContext] Cambiando identidad: ${prev} → ${next}`);
+      return next;
+    });
+  }, [hidiProfile]);
+
+  // Setter público para que HidiCreationScreen pueda establecer el perfil recién creado
+  const setHidiProfile = useCallback((profile: UserProfile) => {
+    setHidiProfileState(profile);
+    if (user) {
+      updateUserCache(`hidi_${user.uid}`, profile);
+    }
+  }, [user]);
+
   const value: UserProfileContextType = {
     userProfile,
+    realProfile,
+    hidiProfile,
+    activeProfileType,
+    hasHidiProfile: !!hidiProfile,
     loading,
     error,
     updateProfile,
     updateLocalProfile,
     refreshProfile,
+    switchIdentity,
+    setHidiProfile,
   };
 
   return (

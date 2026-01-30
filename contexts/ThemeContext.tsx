@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Appearance, ColorSchemeName } from 'react-native';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { Appearance, ColorSchemeName, Animated, StyleSheet, View } from 'react-native';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 
@@ -79,17 +79,17 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [themeMode, setThemeModeState] = useState<ThemeMode>('light');
   const [systemColorScheme, setSystemColorScheme] = useState<ColorSchemeName>(Appearance.getColorScheme());
 
+  // Dos overlays: uno blanco (tapa al ir light→dark), uno negro (tapa al ir dark→light)
+  const lightOverlay = useRef(new Animated.Value(0)).current;
+  const darkOverlay = useRef(new Animated.Value(0)).current;
+  const needsFadeRef = useRef<'light' | 'dark' | null>(null);
+
   useEffect(() => {
     const subscription = Appearance.addChangeListener(({ colorScheme }) => {
       setSystemColorScheme(colorScheme);
     });
-
     return () => subscription.remove();
   }, []);
-
-  const setThemeMode = (mode: ThemeMode) => {
-    setThemeModeState(mode);
-  };
 
   const getEffectiveTheme = (): Theme => {
     if (themeMode === 'system') {
@@ -100,12 +100,71 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 
   const theme = getEffectiveTheme();
 
+  // Fade-out after theme render
+  useEffect(() => {
+    if (needsFadeRef.current) {
+      const overlay = needsFadeRef.current === 'light' ? lightOverlay : darkOverlay;
+      needsFadeRef.current = null;
+
+      Animated.timing(overlay, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [themeMode]);
+
+  const setThemeMode = (mode: ThemeMode) => {
+    const currentDark = theme.dark;
+    const targetDark = mode === 'dark' || (mode === 'system' && systemColorScheme === 'dark');
+
+    if (currentDark !== targetDark) {
+      if (currentDark) {
+        // Estamos en dark, vamos a light → tapar con overlay NEGRO
+        darkOverlay.setValue(1);
+        needsFadeRef.current = 'dark';
+      } else {
+        // Estamos en light, vamos a dark → tapar con overlay BLANCO
+        lightOverlay.setValue(1);
+        needsFadeRef.current = 'light';
+      }
+    }
+
+    setThemeModeState(mode);
+  };
+
   return (
     <ThemeContext.Provider value={{ theme, themeMode, setThemeMode }}>
-      {children}
+      <View style={styles.wrapper}>
+        {children}
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.overlay, styles.overlayWhite, { opacity: lightOverlay }]}
+        />
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.overlay, styles.overlayBlack, { opacity: darkOverlay }]}
+        />
+      </View>
     </ThemeContext.Provider>
   );
 };
+
+const styles = StyleSheet.create({
+  wrapper: {
+    flex: 1,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+  },
+  overlayWhite: {
+    backgroundColor: '#FFFFFF',
+  },
+  overlayBlack: {
+    backgroundColor: '#0A0A0A',
+  },
+});
 
 export const useTheme = (): ThemeContextType => {
   const context = useContext(ThemeContext);

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,13 +6,10 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Image as RNImage,
   Alert,
-  Dimensions,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,82 +18,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { postsService } from '../services/firestoreService';
-import { uploadPostImage, uploadCommunityImage } from '../services/storageService';
-import { communityService, CATEGORY_TAGS } from '../services/communityService';
+import { uploadPostImage, uploadPostVideo } from '../services/storageService';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { Timestamp } from 'firebase/firestore';
-import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, ICON_SIZE } from '../constants/design';
+import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS } from '../constants/design';
 import { scale } from '../utils/scale';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
-
-// Colores para cada categoría (mismo que en LandingScreen)
-const CATEGORY_COLORS: { [key: string]: string } = {
-  'noticias': '#10B981',
-  'relaciones-amor': '#EC4899',
-  'finanzas-dinero': '#6366F1',
-  'laboral': '#F59E0B',
-  'salud-bienestar': '#22C55E',
-  'entretenimiento': '#F59E0B',
-  'gaming-tech': '#8B5CF6',
-  'educacion-carrera': '#0EA5E9',
-  'deportes': '#EF4444',
-  'confesiones': '#6B7280',
-  'debates-calientes': '#F97316',
-  'viajes-lugares': '#14B8A6',
-  'comida-cocina': '#F472B6',
-  'moda-estilo': '#A855F7',
-  'espiritualidad': '#FBBF24',
-  'anime-manga': '#FF6B9D',
-  'criptomonedas': '#F7931A',
-  'kpop-kdrama': '#FF2D78',
-  // Fallback para comunidades antiguas
-  'gamers': '#8B5CF6',
-  'politica': '#10B981',
-  'religion-filosofia': '#FBBF24',
-  'recreacion': '#14B8A6',
-  'denuncias-injusticias': '#EF4444',
-  'consejos-psicologia': '#EC4899',
-  'gastronomia': '#F472B6',
-  'haters': '#F97316',
-};
-
-const getCategoryColor = (slug: string): string => {
-  return CATEGORY_COLORS[slug] || '#8B5CF6';
-};
-
-// Categorías oficiales (mismo que en LandingScreen)
-const OFFICIAL_CATEGORIES = [
-  { id: 'noticias', name: 'Noticias', icon: 'newspaper-outline', customIcon: require('../assets/icons/category-noticias.png'), slug: 'noticias' },
-  { id: 'relaciones', name: 'Relaciones & Amor', icon: 'heart-outline', customIcon: require('../assets/icons/category-relaciones.png'), slug: 'relaciones-amor' },
-  { id: 'finanzas', name: 'Finanzas & Dinero', icon: 'cash-outline', customIcon: require('../assets/icons/category-trabajo.png'), slug: 'finanzas-dinero' },
-  { id: 'laboral', name: 'Laboral', icon: 'briefcase-outline', customIcon: require('../assets/icons/category-laboral.png'), slug: 'laboral' },
-  { id: 'salud', name: 'Salud & Bienestar', icon: 'fitness-outline', customIcon: require('../assets/icons/category-salud.png'), slug: 'salud-bienestar' },
-  { id: 'entretenimiento', name: 'Entretenimiento', icon: 'film-outline', customIcon: require('../assets/icons/category-entretenimiento.png'), slug: 'entretenimiento' },
-  { id: 'gaming', name: 'Gaming & Tech', icon: 'game-controller-outline', customIcon: require('../assets/icons/category-gaming.png'), slug: 'gaming-tech' },
-  { id: 'educacion', name: 'Educación & Carrera', icon: 'school-outline', customIcon: require('../assets/icons/category-educacion.png'), slug: 'educacion-carrera' },
-  { id: 'deportes', name: 'Deportes', icon: 'football-outline', customIcon: require('../assets/icons/category-deportes.png'), slug: 'deportes' },
-  { id: 'confesiones', name: 'Confesiones', icon: 'eye-off-outline', customIcon: require('../assets/icons/category-confesiones.png'), slug: 'confesiones' },
-  { id: 'debates', name: 'Debates Calientes', icon: 'flame-outline', slug: 'debates-calientes' },
-  { id: 'viajes', name: 'Viajes & Lugares', icon: 'airplane-outline', customIcon: require('../assets/icons/category-viajes.png'), slug: 'viajes-lugares' },
-  { id: 'comida', name: 'Comida & Cocina', icon: 'restaurant-outline', slug: 'comida-cocina' },
-  { id: 'moda', name: 'Moda & Estilo', icon: 'shirt-outline', slug: 'moda-estilo' },
-  { id: 'espiritualidad', name: 'Espiritualidad', icon: 'sparkles-outline', slug: 'espiritualidad' },
-  { id: 'anime', name: 'Anime & Manga', icon: 'sparkles-outline', slug: 'anime-manga' },
-  { id: 'cripto', name: 'Criptomonedas', icon: 'logo-bitcoin', slug: 'criptomonedas' },
-  { id: 'kpop', name: 'K-Pop & K-Drama', icon: 'musical-notes-outline', slug: 'kpop-kdrama' },
-];
-
-// Tipo simple para categorías seleccionables
-interface SelectableCategory {
-  id: string;
-  name: string;
-  icon: string;
-  slug: string;
-  imageUrl?: string;
-  imageThumbnailUrl?: string;
-}
 
 interface MediaItem {
   type: 'image' | 'video';
@@ -121,27 +50,15 @@ const CreateScreen: React.FC = () => {
   const { contentMaxWidth } = useResponsive();
   const navigation = useNavigation();
 
-  // Communities
-  const [selectedCommunity, setSelectedCommunity] = useState<SelectableCategory | null>(null);
-  const [userCommunities, setUserCommunities] = useState<SelectableCategory[]>([]);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newCommunityName, setNewCommunityName] = useState('');
-  const [newCommunityDescription, setNewCommunityDescription] = useState('');
-  const [newCommunityIcon, setNewCommunityIcon] = useState('chatbubbles');
-  const [newCommunityImageUri, setNewCommunityImageUri] = useState<string | null>(null);
-  const [isUploadingCommunityImage, setIsUploadingCommunityImage] = useState(false);
-  const [isCreatingCommunity, setIsCreatingCommunity] = useState(false);
-
   const [postText, setPostText] = useState('');
   const [attachedMedia, setAttachedMedia] = useState<MediaItem[]>([]);
   const [isPublishing, setIsPublishing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const [poll, setPoll] = useState<Poll | null>(null);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const maxTextLength = 500;
-  const maxTags = 3;
   const maxImages = 4;
+  const maxVideoDurationSeconds = 180; // 3 minutos
   const maxPollOptions = 4;
   const minPollOptions = 2;
   const textProgress = postText.length / maxTextLength;
@@ -153,132 +70,8 @@ const CreateScreen: React.FC = () => {
       poll.options.every(opt => opt.text.trim().length > 0)
     : true;
 
-  // Auto-seleccionar la primera categoría
-  useEffect(() => {
-    if (!selectedCommunity) {
-      setSelectedCommunity(OFFICIAL_CATEGORIES[0]);
-    }
-  }, [selectedCommunity]);
-
-  // Cargar categorías de usuarios
-  useEffect(() => {
-    const loadUserCommunities = async () => {
-      try {
-        const communities = await communityService.getUserCommunities();
-        // Mapear a SelectableCategory
-        const mapped: SelectableCategory[] = communities.map(c => ({
-          id: c.id || c.slug,
-          name: c.name,
-          icon: c.icon,
-          slug: c.slug,
-          imageUrl: c.imageUrl,
-          imageThumbnailUrl: c.imageThumbnailUrl,
-        }));
-        setUserCommunities(mapped);
-      } catch (error) {
-        console.error('Error loading user communities:', error);
-      }
-    };
-    loadUserCommunities();
-  }, []);
-
-  // Resetear tags cuando cambia la categoría
-  useEffect(() => {
-    setSelectedTags([]);
-  }, [selectedCommunity?.id]);
-
-  // Obtener tags disponibles para la categoría seleccionada
-  const getAvailableTags = useCallback(() => {
-    if (!selectedCommunity) return [];
-    return CATEGORY_TAGS[selectedCommunity.slug] || [];
-  }, [selectedCommunity]);
-
-  // Toggle tag selection
-  const toggleTag = (tag: string) => {
-    setSelectedTags(prev => {
-      if (prev.includes(tag)) {
-        return prev.filter(t => t !== tag);
-      }
-      if (prev.length >= maxTags) {
-        return prev;
-      }
-      return [...prev, tag];
-    });
-  };
-
-  // Crear nueva categoría
-  const handleCreateCommunity = async () => {
-    if (!user || !newCommunityName.trim()) {
-      Alert.alert('Error', 'Ingresa un nombre para la categoría');
-      return;
-    }
-
-    setIsCreatingCommunity(true);
-    try {
-      let imageUrl: string | undefined;
-      let imageThumbnailUrl: string | undefined;
-
-      // Subir imagen si hay una seleccionada
-      if (newCommunityImageUri) {
-        setIsUploadingCommunityImage(true);
-        try {
-          const { fullSize, thumbnail } = await uploadCommunityImage(
-            newCommunityImageUri,
-            user.uid
-          );
-          imageUrl = fullSize;
-          imageThumbnailUrl = thumbnail;
-        } catch (uploadError) {
-          console.error('Error uploading community image:', uploadError);
-          Alert.alert('Error', 'No se pudo subir la imagen. Intenta de nuevo.');
-          setIsUploadingCommunityImage(false);
-          setIsCreatingCommunity(false);
-          return;
-        }
-        setIsUploadingCommunityImage(false);
-      }
-
-      await communityService.createCommunity({
-        name: newCommunityName.trim(),
-        description: newCommunityDescription.trim() || `Categoría creada por la comunidad`,
-        icon: newCommunityIcon,
-        rules: ['Se respetuoso', 'No spam'],
-        createdBy: user.uid,
-        imageUrl,
-        imageThumbnailUrl,
-      });
-
-      Alert.alert(
-        'Categoría creada',
-        'Tu categoría ha sido creada y ya está disponible para usar.',
-        [{ text: 'OK' }]
-      );
-
-      setShowCreateModal(false);
-      setNewCommunityName('');
-      setNewCommunityDescription('');
-      setNewCommunityIcon('chatbubbles');
-      setNewCommunityImageUri(null);
-
-      // Recargar categorías de usuarios
-      const communities = await communityService.getUserCommunities();
-      const mapped: SelectableCategory[] = communities.map(c => ({
-        id: c.id || c.slug,
-        name: c.name,
-        icon: c.icon,
-        slug: c.slug,
-        imageUrl: c.imageUrl,
-        imageThumbnailUrl: c.imageThumbnailUrl,
-      }));
-      setUserCommunities(mapped);
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo crear la categoría');
-    } finally {
-      setIsCreatingCommunity(false);
-    }
-  };
-
-  const canPublish = postText.trim().length > 0 && !isTextOverLimit && !isPublishing && isPollValid && selectedCommunity !== null;
+  const hasContent = postText.trim().length > 0 || attachedMedia.length > 0 || poll !== null;
+  const canPublish = hasContent && !isTextOverLimit && !isPublishing && isPollValid;
 
   const handleClose = () => {
     navigation.goBack();
@@ -292,7 +85,7 @@ const CreateScreen: React.FC = () => {
         return new Promise<void>((resolve) => {
           const input = document.createElement('input');
           input.type = 'file';
-          input.accept = 'image/*';
+          input.accept = 'image/*,video/*';
           input.multiple = true;
 
           input.onchange = async (e: any) => {
@@ -300,16 +93,53 @@ const CreateScreen: React.FC = () => {
             const remainingSlots = maxImages - attachedMedia.length;
             const filesToProcess = files.slice(0, remainingSlots);
 
-            const newMedia: MediaItem[] = await Promise.all(
-              filesToProcess.map(async (file: File, index: number) => {
-                const uri = URL.createObjectURL(file);
-                return {
+            const newMedia: MediaItem[] = [];
+            for (let index = 0; index < filesToProcess.length; index++) {
+              const file = filesToProcess[index];
+              const isVideo = file.type.startsWith('video/');
+              const uri = URL.createObjectURL(file);
+
+              // Si es video, solo permitir 1 y sin imágenes previas
+              if (isVideo) {
+                if (attachedMedia.length > 0) {
+                  Alert.alert('No disponible', 'No puedes agregar un video si ya tienes media adjunto');
+                  continue;
+                }
+                // Validar duración del video en web
+                const duration = await new Promise<number>((res) => {
+                  const videoEl = document.createElement('video');
+                  videoEl.preload = 'metadata';
+                  videoEl.onloadedmetadata = () => {
+                    res(videoEl.duration);
+                    URL.revokeObjectURL(videoEl.src);
+                  };
+                  videoEl.onerror = () => res(0);
+                  videoEl.src = uri;
+                });
+                if (duration > maxVideoDurationSeconds) {
+                  Alert.alert('Video muy largo', `El video no puede durar más de 3 minutos. Tu video dura ${Math.ceil(duration / 60)} minutos.`);
+                  URL.revokeObjectURL(uri);
+                  continue;
+                }
+                newMedia.push({
+                  id: `video_${Date.now()}_${index}`,
+                  type: 'video' as const,
+                  uri,
+                });
+                break; // Solo 1 video permitido
+              } else {
+                // No permitir imágenes si ya hay un video
+                if (attachedMedia.some(m => m.type === 'video')) {
+                  Alert.alert('No disponible', 'No puedes agregar imágenes si ya tienes un video adjunto');
+                  continue;
+                }
+                newMedia.push({
                   id: `image_${Date.now()}_${index}`,
                   type: 'image' as const,
                   uri,
-                };
-              })
-            );
+                });
+              }
+            }
 
             setAttachedMedia(prev => [...prev, ...newMedia]);
             resolve();
@@ -334,20 +164,50 @@ const CreateScreen: React.FC = () => {
         return;
       }
 
+      const hasVideo = attachedMedia.some(m => m.type === 'video');
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsMultipleSelection: true,
-        selectionLimit: maxImages - attachedMedia.length,
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsMultipleSelection: !hasVideo,
+        selectionLimit: hasVideo ? 0 : maxImages - attachedMedia.length,
         quality: 0.8,
         aspect: [1, 1],
       });
 
       if (!result.canceled && result.assets) {
-        const newMedia: MediaItem[] = result.assets.map((asset, index) => ({
-          id: `image_${Date.now()}_${index}`,
-          type: 'image' as const,
-          uri: asset.uri,
-        }));
+        const newMedia: MediaItem[] = [];
+        for (let index = 0; index < result.assets.length; index++) {
+          const asset = result.assets[index];
+          const isVideo = asset.type === 'video';
+
+          if (isVideo) {
+            if (attachedMedia.length > 0) {
+              Alert.alert('No disponible', 'No puedes agregar un video si ya tienes media adjunto');
+              continue;
+            }
+            // Validar duración (asset.duration viene en milisegundos)
+            const durationSec = (asset.duration || 0) / 1000;
+            if (durationSec > maxVideoDurationSeconds) {
+              Alert.alert('Video muy largo', `El video no puede durar más de 3 minutos. Tu video dura ${Math.ceil(durationSec / 60)} minutos.`);
+              continue;
+            }
+            newMedia.push({
+              id: `video_${Date.now()}_${index}`,
+              type: 'video' as const,
+              uri: asset.uri,
+            });
+            break; // Solo 1 video
+          } else {
+            if (attachedMedia.some(m => m.type === 'video')) {
+              Alert.alert('No disponible', 'No puedes agregar imágenes si ya tienes un video adjunto');
+              continue;
+            }
+            newMedia.push({
+              id: `image_${Date.now()}_${index}`,
+              type: 'image' as const,
+              uri: asset.uri,
+            });
+          }
+        }
 
         setAttachedMedia(prev => [...prev, ...newMedia]);
       }
@@ -414,69 +274,96 @@ const CreateScreen: React.FC = () => {
       return;
     }
 
-    if (!selectedCommunity) {
-      Alert.alert('Comunidad requerida', 'Selecciona una comunidad para publicar');
-      return;
-    }
-
     console.log('🚀 Iniciando publicación...');
     console.log('👤 Usuario ID:', user.uid);
     console.log('📝 Contenido:', postText.trim());
     console.log('🖼️ Imágenes adjuntas:', attachedMedia.length);
-    console.log('🏘️ Comunidad:', selectedCommunity.name);
 
     setIsPublishing(true);
 
     try {
-      // Subir imágenes a Firebase Storage si las hay
+      // Subir media a Firebase Storage si hay
       let imageUrls: string[] = [];
       let thumbnailUrls: string[] = [];
+      let videoUrl: string | undefined;
 
       if (attachedMedia.length > 0) {
-        console.log('📤 Subiendo', attachedMedia.length, 'imágenes...');
+        const isVideoPost = attachedMedia[0].type === 'video';
 
-        for (let i = 0; i < attachedMedia.length; i++) {
-          const media = attachedMedia[i];
+        if (isVideoPost) {
+          // Subir video
+          const media = attachedMedia[0];
           try {
-            console.log(`🖼️ Subiendo imagen ${i + 1}/${attachedMedia.length}:`, media.id);
-
-            // Convertir URI a blob
-            console.log('🔄 Convirtiendo URI a blob...');
+            console.log('📹 Subiendo video...');
             const response = await fetch(media.uri);
-
             if (!response.ok) {
-              throw new Error(`Error al obtener la imagen: ${response.status} ${response.statusText}`);
+              throw new Error(`Error al obtener el video: ${response.status} ${response.statusText}`);
             }
-
             const blob = await response.blob();
-            console.log('✅ Blob creado, tamaño:', blob.size, 'bytes');
+            console.log('✅ Blob de video creado, tamaño:', blob.size, 'bytes');
 
-            // Subir a Firebase Storage (full size y thumbnail)
-            console.log('☁️ Subiendo a Firebase Storage...');
-            const { fullSize, thumbnail } = await uploadPostImage(
+            videoUrl = await uploadPostVideo(
               blob,
               user.uid,
               (progress) => {
-                console.log(`📊 Progreso imagen ${i + 1}:`, progress.progress.toFixed(1) + '%');
+                console.log(`📊 Progreso video:`, progress.progress.toFixed(1) + '%');
                 setUploadProgress(prev => ({
                   ...prev,
                   [media.id]: progress.progress
                 }));
               }
             );
-
-            console.log('✅ Imagen full size subida:', fullSize);
-            console.log('✅ Thumbnail subido:', thumbnail);
-            imageUrls.push(fullSize);
-            thumbnailUrls.push(thumbnail);
+            console.log('✅ Video subido:', videoUrl);
           } catch (error) {
-            console.error('Error uploading image:', error);
+            console.error('Error uploading video:', error);
             Alert.alert(
-              'Error al subir imagen', 
+              'Error al subir video',
               `Error: ${error instanceof Error ? error.message : 'Error desconocido'}\n\nVerifica que:\n• Tengas conexión a internet\n• Firebase Storage esté configurado\n• Las reglas de Storage permitan escritura`
             );
             setIsPublishing(false);
             return;
+          }
+        } else {
+          // Subir imágenes
+          console.log('📤 Subiendo', attachedMedia.length, 'imágenes...');
+
+          for (let i = 0; i < attachedMedia.length; i++) {
+            const media = attachedMedia[i];
+            try {
+              console.log(`🖼️ Subiendo imagen ${i + 1}/${attachedMedia.length}:`, media.id);
+
+              const response = await fetch(media.uri);
+              if (!response.ok) {
+                throw new Error(`Error al obtener la imagen: ${response.status} ${response.statusText}`);
+              }
+              const blob = await response.blob();
+              console.log('✅ Blob creado, tamaño:', blob.size, 'bytes');
+
+              const { fullSize, thumbnail } = await uploadPostImage(
+                blob,
+                user.uid,
+                (progress) => {
+                  console.log(`📊 Progreso imagen ${i + 1}:`, progress.progress.toFixed(1) + '%');
+                  setUploadProgress(prev => ({
+                    ...prev,
+                    [media.id]: progress.progress
+                  }));
+                }
+              );
+
+              console.log('✅ Imagen full size subida:', fullSize);
+              console.log('✅ Thumbnail subido:', thumbnail);
+              imageUrls.push(fullSize);
+              thumbnailUrls.push(thumbnail);
+            } catch (error) {
+              console.error('Error uploading image:', error);
+              Alert.alert(
+                'Error al subir imagen',
+                `Error: ${error instanceof Error ? error.message : 'Error desconocido'}\n\nVerifica que:\n• Tengas conexión a internet\n• Firebase Storage esté configurado\n• Las reglas de Storage permitan escritura`
+              );
+              setIsPublishing(false);
+              return;
+            }
           }
         }
       }
@@ -485,22 +372,19 @@ const CreateScreen: React.FC = () => {
       const hashtags = detectHashtags(postText);
       console.log('🏷️ Hashtags encontrados:', hashtags);
 
-      // Crear el post en Firestore
+      // Crear el post en Firestore (usar uid del perfil activo)
       const postData: any = {
-        userId: user.uid,
+        userId: userProfile?.uid || user.uid,
         content: postText.trim(),
         imageUrls,
         imageUrlsThumbnails: thumbnailUrls,
+        ...(videoUrl ? { videoUrl } : {}),
         likes: 0,
         comments: 0,
         shares: 0,
         views: 0,
         isPrivate: false,
         hashtags,
-        // Community data
-        communityId: selectedCommunity.id,
-        communitySlug: selectedCommunity.slug,
-        tags: selectedTags.length > 0 ? selectedTags : [],
         // Voting system (initialize with 0)
         agreementCount: 0,
         disagreementCount: 0,
@@ -530,26 +414,9 @@ const CreateScreen: React.FC = () => {
       setAttachedMedia([]);
       setUploadProgress({});
       setPoll(null);
-      setSelectedTags([]);
 
-      // Navegar al feed de la categoría para ver la publicación
-      // Usar goBack y luego navegar para evitar problemas con reset
+      // Volver al home
       navigation.goBack();
-
-      // Pequeño delay para asegurar que la navegación anterior se complete
-      setTimeout(() => {
-        try {
-          (navigation as any).navigate('Main', {
-            screen: 'Home',
-            params: {
-              screen: 'Feed',
-              params: { communitySlug: selectedCommunity.slug },
-            },
-          });
-        } catch (navError) {
-          console.log('Navigation after publish completed with fallback');
-        }
-      }, 100);
 
     } catch (error) {
       console.error('Error publishing post:', error);
@@ -725,9 +592,9 @@ const CreateScreen: React.FC = () => {
       // Si ya hay una encuesta, removerla
       setPoll(null);
     } else {
-      // Si hay imágenes, no permitir crear encuesta
+      // Si hay media, no permitir crear encuesta
       if (attachedMedia.length > 0) {
-        Alert.alert('No disponible', 'No puedes agregar una encuesta si ya tienes imágenes adjuntas');
+        Alert.alert('No disponible', 'No puedes agregar una encuesta si ya tienes media adjunto');
         return;
       }
       // Crear nueva encuesta con 2 opciones vacías
@@ -789,13 +656,13 @@ const CreateScreen: React.FC = () => {
         <TouchableOpacity
           style={styles.toolbarButton}
           onPress={pickImageFromGallery}
-          disabled={attachedMedia.length >= maxImages || poll !== null}
+          disabled={attachedMedia.length >= maxImages || poll !== null || attachedMedia.some(m => m.type === 'video')}
           activeOpacity={0.7}
         >
           <Ionicons
             name="image-outline"
             size={scale(22)}
-            color={(attachedMedia.length >= maxImages || poll !== null) ? theme.colors.textSecondary : theme.colors.accent}
+            color={(attachedMedia.length >= maxImages || poll !== null || attachedMedia.some(m => m.type === 'video')) ? theme.colors.textSecondary : theme.colors.accent}
           />
         </TouchableOpacity>
 
@@ -804,13 +671,13 @@ const CreateScreen: React.FC = () => {
           <TouchableOpacity
             style={styles.toolbarButton}
             onPress={takePhoto}
-            disabled={attachedMedia.length >= maxImages || poll !== null}
+            disabled={attachedMedia.length >= maxImages || poll !== null || attachedMedia.some(m => m.type === 'video')}
             activeOpacity={0.7}
           >
             <Ionicons
               name="camera-outline"
               size={scale(22)}
-              color={(attachedMedia.length >= maxImages || poll !== null) ? theme.colors.textSecondary : theme.colors.accent}
+              color={(attachedMedia.length >= maxImages || poll !== null || attachedMedia.some(m => m.type === 'video')) ? theme.colors.textSecondary : theme.colors.accent}
             />
           </TouchableOpacity>
         )}
@@ -896,221 +763,6 @@ const CreateScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Community Selector con iconos coloridos */}
-      <View style={[styles.communitySelector, { borderBottomColor: theme.colors.border }]}>
-        {/* Categorías Oficiales */}
-        <Text style={[styles.communitySelectorLabel, { color: theme.colors.textSecondary }]}>
-          Categorías Oficiales
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.communityGridContainer}
-        >
-          {OFFICIAL_CATEGORIES.map((category) => {
-            const color = getCategoryColor(category.slug);
-            const isSelected = selectedCommunity?.id === category.id;
-
-            return (
-              <TouchableOpacity
-                key={category.id}
-                style={[
-                  styles.communityCard,
-                  {
-                    backgroundColor: theme.colors.card,
-                    borderColor: isSelected ? color : theme.colors.border,
-                    borderWidth: isSelected ? 2 : 1,
-                  },
-                ]}
-                onPress={() => setSelectedCommunity(category)}
-                activeOpacity={0.7}
-              >
-                <View
-                  style={[
-                    styles.communityIconContainer,
-                    category.customIcon ? {} : {
-                      backgroundColor: color,
-                      shadowColor: color,
-                      shadowOffset: { width: 0, height: 3 },
-                      shadowOpacity: 0.4,
-                      shadowRadius: 6,
-                      elevation: 4,
-                    },
-                  ]}
-                >
-                  {category.customIcon ? (
-                    <Image
-                      source={category.customIcon}
-                      style={styles.customCategoryIcon}
-                    />
-                  ) : (
-                    <Ionicons
-                      name={category.icon as any}
-                      size={scale(20)}
-                      color="white"
-                    />
-                  )}
-                </View>
-                <Text
-                  style={[
-                    styles.communityCardText,
-                    { color: theme.colors.text },
-                  ]}
-                  numberOfLines={2}
-                >
-                  {category.name}
-                </Text>
-                {isSelected && (
-                  <View style={[styles.selectedBadge, { backgroundColor: color }]}>
-                    <Ionicons name="checkmark" size={scale(12)} color="white" />
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* Categorías de la Comunidad */}
-        {userCommunities.length > 0 && (
-          <>
-            <Text style={[styles.communitySelectorLabel, { color: theme.colors.textSecondary, marginTop: SPACING.md }]}>
-              Categorías de la Comunidad
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.communityGridContainer}
-            >
-              {userCommunities.map((community) => {
-                const color = getCategoryColor(community.slug) || '#6B7280';
-                const isSelected = selectedCommunity?.id === community.id;
-
-                return (
-                  <TouchableOpacity
-                    key={community.id}
-                    style={[
-                      styles.communityCard,
-                      {
-                        backgroundColor: theme.colors.card,
-                        borderColor: isSelected ? color : theme.colors.border,
-                        borderWidth: isSelected ? 2 : 1,
-                      },
-                    ]}
-                    onPress={() => setSelectedCommunity(community)}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        styles.communityIconContainer,
-                        community.imageUrl ? {} : {
-                          backgroundColor: color,
-                          shadowColor: color,
-                          shadowOffset: { width: 0, height: 3 },
-                          shadowOpacity: 0.4,
-                          shadowRadius: 6,
-                          elevation: 4,
-                        },
-                      ]}
-                    >
-                      {community.imageUrl ? (
-                        <Image
-                          source={{ uri: community.imageThumbnailUrl || community.imageUrl }}
-                          style={styles.customCategoryIcon}
-                        />
-                      ) : (
-                        <Ionicons
-                          name={community.icon as any}
-                          size={scale(20)}
-                          color="white"
-                        />
-                      )}
-                    </View>
-                    <Text
-                      style={[
-                        styles.communityCardText,
-                        { color: theme.colors.text },
-                      ]}
-                      numberOfLines={2}
-                    >
-                      {community.name}
-                    </Text>
-                    {isSelected && (
-                      <View style={[styles.selectedBadge, { backgroundColor: color }]}>
-                        <Ionicons name="checkmark" size={scale(12)} color="white" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </>
-        )}
-
-        {/* Botón Crear Nueva Categoría */}
-        <TouchableOpacity
-          style={[styles.createCategoryButton, { borderColor: theme.colors.border }]}
-          onPress={() => setShowCreateModal(true)}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="add-circle-outline" size={scale(20)} color={theme.colors.accent} />
-          <Text style={[styles.createCategoryText, { color: theme.colors.accent }]}>
-            Crear nueva categoría
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Tags Section */}
-      {selectedCommunity && getAvailableTags().length > 0 && (
-        <View style={[styles.tagsSection, { borderBottomColor: theme.colors.border }]}>
-          <View style={styles.tagsHeader}>
-            <Text style={[styles.tagsLabel, { color: theme.colors.textSecondary }]}>
-              Tags (opcional, máx. {maxTags})
-            </Text>
-            {selectedTags.length > 0 && (
-              <Text style={[styles.tagsCount, { color: theme.colors.accent }]}>
-                {selectedTags.length}/{maxTags}
-              </Text>
-            )}
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tagsScrollContent}
-          >
-            {getAvailableTags().map((tag) => {
-              const isSelected = selectedTags.includes(tag);
-              const color = getCategoryColor(selectedCommunity.slug);
-              return (
-                <TouchableOpacity
-                  key={tag}
-                  style={[
-                    styles.tagChip,
-                    {
-                      backgroundColor: isSelected ? color : theme.colors.surface,
-                      borderColor: isSelected ? color : theme.colors.border,
-                    },
-                  ]}
-                  onPress={() => toggleTag(tag)}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.tagChipText,
-                      { color: isSelected ? 'white' : theme.colors.text },
-                    ]}
-                  >
-                    {tag}
-                  </Text>
-                  {isSelected && (
-                    <Ionicons name="checkmark" size={scale(14)} color="white" style={{ marginLeft: scale(4) }} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
-
       <KeyboardAvoidingView
         style={styles.container}
         behavior="padding"
@@ -1162,180 +814,6 @@ const CreateScreen: React.FC = () => {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Pantalla completa para crear nueva categoría */}
-      <Modal
-        visible={showCreateModal}
-        animationType="slide"
-        transparent={false}
-        onRequestClose={() => setShowCreateModal(false)}
-      >
-        <SafeAreaView style={[styles.modalFullScreen, { backgroundColor: theme.colors.background }]} edges={['top', 'bottom']}>
-          {/* Header */}
-          <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
-            <TouchableOpacity onPress={() => setShowCreateModal(false)} style={styles.modalBackButton}>
-              <Ionicons name="arrow-back" size={scale(24)} color={theme.colors.text} />
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
-              Crear Nueva Categoría
-            </Text>
-            <View style={{ width: scale(24) }} />
-          </View>
-
-          {/* Contenido scrollable */}
-          <ScrollView
-            style={styles.modalScrollContent}
-            contentContainerStyle={styles.modalScrollInner}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <Text style={[styles.modalSubtitle, { color: theme.colors.textSecondary }]}>
-              Crea una nueva categoría para la comunidad
-            </Text>
-
-            <View style={styles.modalForm}>
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Nombre</Text>
-              <TextInput
-                style={[styles.modalInput, {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  color: theme.colors.text,
-                }]}
-                placeholder="Ej: Mascotas, Autos, etc."
-                placeholderTextColor={theme.colors.textSecondary}
-                value={newCommunityName}
-                onChangeText={setNewCommunityName}
-                maxLength={30}
-              />
-
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Descripción (opcional)</Text>
-              <TextInput
-                style={[styles.modalInput, styles.modalTextArea, {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  color: theme.colors.text,
-                }]}
-                placeholder="¿De qué trata esta categoría?"
-                placeholderTextColor={theme.colors.textSecondary}
-                value={newCommunityDescription}
-                onChangeText={setNewCommunityDescription}
-                maxLength={150}
-                multiline
-                numberOfLines={3}
-              />
-
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Imagen (opcional)</Text>
-              <View style={styles.communityImageSection}>
-                {newCommunityImageUri ? (
-                  <View style={styles.communityImagePreviewContainer}>
-                    <Image
-                      source={{ uri: newCommunityImageUri }}
-                      style={styles.communityImagePreview}
-                    />
-                    <TouchableOpacity
-                      style={styles.communityImageRemoveButton}
-                      onPress={() => setNewCommunityImageUri(null)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="close-circle" size={scale(24)} color="white" />
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={[styles.communityImagePickerButton, {
-                      backgroundColor: theme.colors.surface,
-                      borderColor: theme.colors.border,
-                    }]}
-                    onPress={async () => {
-                      if (Platform.OS === 'web') {
-                        const input = document.createElement('input');
-                        input.type = 'file';
-                        input.accept = 'image/*';
-                        input.onchange = (e: any) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const uri = URL.createObjectURL(file);
-                            setNewCommunityImageUri(uri);
-                          }
-                        };
-                        input.click();
-                      } else {
-                        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                        if (!permissionResult.granted) {
-                          Alert.alert('Permisos necesarios', 'Necesitamos acceso a tu galería');
-                          return;
-                        }
-                        const result = await ImagePicker.launchImageLibraryAsync({
-                          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                          allowsEditing: true,
-                          aspect: [1, 1],
-                          quality: 0.8,
-                        });
-                        if (!result.canceled && result.assets[0]) {
-                          setNewCommunityImageUri(result.assets[0].uri);
-                        }
-                      }
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="image-outline" size={scale(28)} color={theme.colors.textSecondary} />
-                    <Text style={[styles.communityImagePickerText, { color: theme.colors.textSecondary }]}>
-                      Subir imagen
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
-                Icono {newCommunityImageUri ? '(deshabilitado - imagen seleccionada)' : ''}
-              </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={[styles.iconSelector, newCommunityImageUri ? { opacity: 0.4 } : {}]}
-                pointerEvents={newCommunityImageUri ? 'none' : 'auto'}
-              >
-                {['chatbubbles', 'people', 'heart', 'star', 'flash', 'leaf', 'paw', 'car', 'musical-notes', 'camera', 'book', 'game-controller'].map((icon) => (
-                  <TouchableOpacity
-                    key={icon}
-                    style={[
-                      styles.iconOption,
-                      {
-                        backgroundColor: newCommunityIcon === icon ? theme.colors.accent : theme.colors.surface,
-                        borderColor: newCommunityIcon === icon ? theme.colors.accent : theme.colors.border,
-                      },
-                    ]}
-                    onPress={() => setNewCommunityIcon(icon)}
-                  >
-                    <Ionicons
-                      name={icon as any}
-                      size={scale(22)}
-                      color={newCommunityIcon === icon ? 'white' : theme.colors.text}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.createCommunitySubmitButton,
-                {
-                  backgroundColor: newCommunityName.trim() ? theme.colors.accent : theme.colors.surface,
-                  opacity: newCommunityName.trim() ? 1 : 0.5,
-                },
-              ]}
-              onPress={handleCreateCommunity}
-              disabled={!newCommunityName.trim() || isCreatingCommunity}
-            >
-              {isCreatingCommunity ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text style={styles.createCommunitySubmitText}>Crear categoría</Text>
-              )}
-            </TouchableOpacity>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 };
@@ -1379,58 +857,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: FONT_SIZE.sm,
     fontWeight: FONT_WEIGHT.bold,
-  },
-  // Community selector
-  communitySelector: {
-    paddingVertical: SPACING.md,
-    borderBottomWidth: scale(0.5),
-  },
-  communitySelectorLabel: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.medium,
-    marginBottom: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-  },
-  communityGridContainer: {
-    paddingHorizontal: SPACING.lg,
-    gap: SPACING.sm,
-  },
-  communityCard: {
-    width: scale(80),
-    height: scale(90),
-    borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: SPACING.sm,
-  },
-  communityIconContainer: {
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(12),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.xs,
-  },
-  customCategoryIcon: {
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(12),
-  },
-  communityCardText: {
-    fontSize: scale(10),
-    fontWeight: FONT_WEIGHT.medium,
-    textAlign: 'center',
-    lineHeight: scale(12),
-  },
-  selectedBadge: {
-    position: 'absolute',
-    top: scale(4),
-    right: scale(4),
-    width: scale(18),
-    height: scale(18),
-    borderRadius: scale(9),
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   // Área de composición
   compositionArea: {
@@ -1613,164 +1039,6 @@ const styles = StyleSheet.create({
   pollDurationButtonText: {
     fontSize: FONT_SIZE.sm,
     fontWeight: FONT_WEIGHT.medium,
-  },
-  // Botón crear categoría
-  createCategoryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.md,
-    marginTop: SPACING.md,
-    marginHorizontal: SPACING.lg,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderRadius: BORDER_RADIUS.md,
-    gap: SPACING.sm,
-  },
-  createCategoryText: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.medium,
-  },
-  // Tags section
-  tagsSection: {
-    paddingVertical: SPACING.md,
-    borderBottomWidth: scale(0.5),
-  },
-  tagsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.sm,
-  },
-  tagsLabel: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.medium,
-  },
-  tagsCount: {
-    fontSize: FONT_SIZE.xs,
-    fontWeight: FONT_WEIGHT.semibold,
-  },
-  tagsScrollContent: {
-    paddingHorizontal: SPACING.lg,
-    gap: SPACING.sm,
-  },
-  tagChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.full,
-    borderWidth: 1,
-  },
-  tagChipText: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.medium,
-  },
-  // Modal estilos (pantalla completa)
-  modalFullScreen: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: scale(0.5),
-  },
-  modalBackButton: {
-    padding: SPACING.xs,
-  },
-  modalTitle: {
-    fontSize: FONT_SIZE.lg,
-    fontWeight: FONT_WEIGHT.bold,
-  },
-  modalScrollContent: {
-    flex: 1,
-  },
-  modalScrollInner: {
-    padding: SPACING.xl,
-    paddingBottom: SPACING.xl * 2,
-  },
-  modalSubtitle: {
-    fontSize: FONT_SIZE.sm,
-    marginBottom: SPACING.xl,
-  },
-  modalForm: {
-    marginBottom: SPACING.xl,
-  },
-  inputLabel: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.medium,
-    marginBottom: SPACING.xs,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: BORDER_RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    fontSize: FONT_SIZE.base,
-    marginBottom: SPACING.md,
-  },
-  modalTextArea: {
-    minHeight: scale(80),
-    textAlignVertical: 'top',
-  },
-  iconSelector: {
-    flexDirection: 'row',
-    marginBottom: SPACING.md,
-  },
-  iconOption: {
-    width: scale(44),
-    height: scale(44),
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: SPACING.sm,
-  },
-  communityImageSection: {
-    marginBottom: SPACING.md,
-  },
-  communityImagePickerButton: {
-    width: scale(80),
-    height: scale(80),
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  communityImagePickerText: {
-    fontSize: FONT_SIZE.xs,
-  },
-  communityImagePreviewContainer: {
-    position: 'relative',
-    width: scale(80),
-    height: scale(80),
-  },
-  communityImagePreview: {
-    width: scale(80),
-    height: scale(80),
-    borderRadius: BORDER_RADIUS.md,
-  },
-  communityImageRemoveButton: {
-    position: 'absolute',
-    top: -scale(8),
-    right: -scale(8),
-  },
-  createCommunitySubmitButton: {
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createCommunitySubmitText: {
-    color: 'white',
-    fontSize: FONT_SIZE.base,
-    fontWeight: FONT_WEIGHT.semibold,
   },
 });
 

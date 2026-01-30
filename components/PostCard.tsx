@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,14 +17,16 @@ import {
   Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import ShareablePostCard from './ShareablePostCard';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserProfile } from '../contexts/UserProfileContext';
 import { useUserById } from '../hooks/useUserById';
 import { useVote } from '../hooks/useVote';
 import { useReposts } from '../hooks/useReposts';
@@ -45,6 +47,7 @@ interface PostCardProps {
   onComment: (postId: string) => void;
   onPrivateMessage: (userId: string, userData?: { displayName: string; avatarType?: string; avatarId?: string; photoURL?: string; photoURLThumbnail?: string }) => void;
   onPress?: (post: Post) => void;
+  isVisible?: boolean;
 }
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -68,11 +71,14 @@ const PostCard: React.FC<PostCardProps> = ({
   post,
   onComment,
   onPrivateMessage,
-  onPress
+  onPress,
+  isVisible = true,
 }) => {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { userProfile: activeProfile } = useUserProfile();
   const navigation = useNavigation<PostCardNavigationProp>();
+  const isFocused = useIsFocused();
 
   // Si es un repost, cargar el post original y el autor del repost
   // Si no es un repost, usar el post actual
@@ -91,7 +97,7 @@ const PostCard: React.FC<PostCardProps> = ({
   // Hook de votación con estado optimista
   const { stats: voteStats, voteAgree, voteDisagree, isLoading: isVoting } = useVote({
     postId: post.id!,
-    userId: user?.uid,
+    userId: activeProfile?.uid || user?.uid,
     initialStats: {
       agreementCount: post.agreementCount || 0,
       disagreementCount: post.disagreementCount || 0,
@@ -116,6 +122,23 @@ const PostCard: React.FC<PostCardProps> = ({
   const [localViews, setLocalViews] = useState(post.views || 0);
   const [isSharing, setIsSharing] = useState(false);
   const [showShareCard, setShowShareCard] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const videoRef = useRef<Video>(null);
+
+  // Pausar y silenciar video cuando el post no es visible o la pantalla pierde foco
+  useEffect(() => {
+    if (!videoRef.current || !post.videoUrl) return;
+    if (isVisible && isFocused) {
+      videoRef.current.playAsync();
+      setIsPlaying(true);
+    } else {
+      videoRef.current.pauseAsync();
+      videoRef.current.setIsMutedAsync(true);
+      setIsPlaying(false);
+      setIsMuted(true);
+    }
+  }, [isVisible, isFocused]);
   const scrollViewRef = useRef<ScrollView>(null);
   const shareCardRef = useRef<ViewShot>(null);
   const carouselWidth = getCarouselWidth();
@@ -147,8 +170,8 @@ const PostCard: React.FC<PostCardProps> = ({
     loadOriginalPost();
   }, [isRepost, post.originalPostId]);
 
-  // Verificar si el post pertenece al usuario actual
-  const isOwnPost = user?.uid === post.userId;
+  // Verificar si el post pertenece al usuario actual (comparar con perfil activo)
+  const isOwnPost = activeProfile?.uid === post.userId || user?.uid === post.userId;
 
   // Sincronizar poll local con el post (usar original si es repost)
   useEffect(() => {
@@ -163,15 +186,16 @@ const PostCard: React.FC<PostCardProps> = ({
 
   // Verificar si el usuario ya votó en la encuesta
   useEffect(() => {
-    if (post.poll && user?.uid) {
+    const currentUid = activeProfile?.uid || user?.uid;
+    if (post.poll && currentUid) {
       const voteIndex = post.poll.options.findIndex(opt =>
-        opt.votedBy.includes(user.uid)
+        opt.votedBy.includes(currentUid)
       );
       if (voteIndex !== -1) {
         setUserVote(voteIndex);
       }
     }
-  }, [post.poll, user?.uid]);
+  }, [post.poll, activeProfile?.uid, user?.uid]);
 
   // Animar menú cuando se abre/cierra
   useEffect(() => {
@@ -434,7 +458,8 @@ const PostCard: React.FC<PostCardProps> = ({
   };
 
   const handleVote = async (optionIndex: number) => {
-    if (!user || !localPoll || userVote !== null || !post.id) return;
+    const currentUid = activeProfile?.uid || user?.uid;
+    if (!currentUid || !localPoll || userVote !== null || !post.id) return;
 
     try {
       // Actualizar localmente de inmediato (optimistic update)
@@ -449,7 +474,7 @@ const PostCard: React.FC<PostCardProps> = ({
             return {
               ...opt,
               votes: opt.votes + 1,
-              votedBy: [...opt.votedBy, user.uid],
+              votedBy: [...opt.votedBy, currentUid],
             };
           }
           return opt;
@@ -460,11 +485,11 @@ const PostCard: React.FC<PostCardProps> = ({
       console.log('🗳️ Votando en encuesta:', {
         postId: post.id,
         optionIndex,
-        userId: user.uid,
+        userId: currentUid,
       });
 
       // Guardar el voto en Firestore
-      await postsService.voteInPoll(post.id, optionIndex, user.uid);
+      await postsService.voteInPoll(post.id, optionIndex, currentUid);
       console.log('✅ Voto guardado exitosamente en Firestore');
 
     } catch (error) {
@@ -519,7 +544,90 @@ const PostCard: React.FC<PostCardProps> = ({
     setCurrentImageIndex(index);
   };
 
+  const handlePlaybackStatusUpdate = useCallback((status: AVPlaybackStatus) => {
+    if (status.isLoaded) {
+      setIsPlaying(status.isPlaying);
+    }
+  }, []);
+
+  const togglePlayPause = useCallback(async () => {
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      await videoRef.current.pauseAsync();
+    } else {
+      await videoRef.current.playAsync();
+    }
+  }, [isPlaying]);
+
+  const toggleMute = useCallback(async () => {
+    if (!videoRef.current) return;
+    const newMuted = !isMuted;
+    // On iOS, enable playback in silent mode when unmuting
+    if (!newMuted) {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+      });
+    }
+    await videoRef.current.setIsMutedAsync(newMuted);
+    setIsMuted(newMuted);
+  }, [isMuted]);
+
+  const renderVideo = () => {
+    if (!displayPost.videoUrl) return null;
+
+    return (
+      <View style={styles.videoContainer}>
+        <TouchableOpacity
+          activeOpacity={0.95}
+          onPress={togglePlayPause}
+          style={styles.videoTouchable}
+        >
+          <Video
+            ref={videoRef}
+            source={{ uri: displayPost.videoUrl }}
+            style={styles.videoPlayer}
+            resizeMode={ResizeMode.COVER}
+            shouldPlay={isVisible && isFocused}
+            isMuted={isMuted}
+            isLooping={true}
+            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+            posterSource={displayPost.imageUrls?.[0] ? { uri: displayPost.imageUrls[0] } : undefined}
+            posterStyle={styles.videoPoster}
+            usePoster={!!displayPost.imageUrls?.[0]}
+          />
+
+          {/* Play/Pause overlay (shows when paused) */}
+          {!isPlaying && (
+            <View style={styles.videoPlayOverlay}>
+              <View style={styles.videoPlayButton}>
+                <Ionicons name="play" size={scale(40)} color="white" />
+              </View>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Mute/Unmute button */}
+        <TouchableOpacity
+          style={styles.videoMuteButton}
+          onPress={toggleMute}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name={isMuted ? 'volume-mute' : 'volume-high'}
+            size={scale(18)}
+            color="white"
+          />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   const renderMedia = () => {
+    // If post has video, render video instead of images
+    if (displayPost.videoUrl) {
+      return renderVideo();
+    }
+
     if (!displayPost.imageUrls || displayPost.imageUrls.length === 0) return null;
 
     const thumbnails = displayPost.imageUrlsThumbnails || [];
@@ -912,10 +1020,12 @@ const PostCard: React.FC<PostCardProps> = ({
       </View>
 
         {/* Contenido del post */}
-        <View style={styles.content}>
-          <TouchableOpacity onPress={() => onPress?.(displayPost)} activeOpacity={0.98}>
-            {renderTextWithLinks(displayPost.content)}
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.content}
+          onPress={() => onPress?.(displayPost)}
+          activeOpacity={0.9}
+        >
+          {displayPost.content ? renderTextWithLinks(displayPost.content) : null}
           {renderMedia()}
           {renderPoll()}
 
@@ -934,7 +1044,7 @@ const PostCard: React.FC<PostCardProps> = ({
               ))}
             </View>
           )}
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* Acciones */}
@@ -1470,6 +1580,53 @@ const styles = StyleSheet.create({
   tagText: {
     fontSize: FONT_SIZE.xs,
     fontWeight: FONT_WEIGHT.semibold,
+  },
+  videoContainer: {
+    position: 'relative',
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    marginTop: SPACING.sm,
+    height: scale(350),
+    backgroundColor: '#000',
+  },
+  videoTouchable: {
+    width: '100%',
+    height: '100%',
+  },
+  videoPlayer: {
+    width: '100%',
+    height: '100%',
+  },
+  videoPoster: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  videoPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  videoPlayButton: {
+    width: scale(64),
+    height: scale(64),
+    borderRadius: scale(32),
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingLeft: scale(4),
+  },
+  videoMuteButton: {
+    position: 'absolute',
+    bottom: SPACING.md,
+    right: SPACING.md,
+    width: scale(34),
+    height: scale(34),
+    borderRadius: scale(17),
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   shareCardContainer: {
     position: 'absolute',

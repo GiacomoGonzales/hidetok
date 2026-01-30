@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, Animated, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -65,25 +65,33 @@ const HomeScreen: React.FC = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
-  const [headerHeight, setHeaderHeight] = useState(0);
-  const [tabsHeight, setTabsHeight] = useState(0);
   const flatListRef = React.useRef<FlatList>(null);
-  const scrollY = useRef(new Animated.Value(0)).current;
   const currentScrollPosition = useRef(0);
+  const [visiblePostIds, setVisiblePostIds] = useState<Set<string>>(new Set());
+
+  // Detectar qué posts están visibles en pantalla
+  const viewabilityConfigCallbackPairs = useRef([
+    {
+      viewabilityConfig: { itemVisiblePercentThreshold: 50 },
+      onViewableItemsChanged: ({ viewableItems }: { viewableItems: Array<{ item: Post; isViewable: boolean }> }) => {
+        const ids = new Set<string>();
+        viewableItems.forEach((entry) => {
+          if (entry.item.id) {
+            ids.add(entry.item.id);
+          }
+        });
+        setVisiblePostIds(ids);
+      },
+    },
+  ]).current;
 
   // Cache de posts por comunidad para carga instantánea
   const postsCache = useRef<Map<string, { posts: Post[]; lastDoc: DocumentSnapshot | null; timestamp: number }>>(new Map());
   const CACHE_DURATION = 60000; // 1 minuto de validez del cache
-  const headerTranslateY = scrollY.interpolate({
-    inputRange: [0, headerHeight + tabsHeight],
-    outputRange: [0, -(headerHeight + tabsHeight)],
-    extrapolate: 'clamp',
-  });
 
   // Función de navegación para el header
   const handleNotificationsPress = () => {
-    // TODO: Implementar pantalla de notificaciones
-    console.log('Notificaciones - Próximamente');
+    navigation.navigate('Notifications' as any);
   };
 
   // Scroll to top cuando se dispara el trigger
@@ -404,6 +412,7 @@ const HomeScreen: React.FC = () => {
         onComment={handleComment}
         onPrivateMessage={handlePrivateMessage}
         onPress={handlePostPress}
+        isVisible={visiblePostIds.has(item.id || '')}
       />
     </View>
   );
@@ -469,77 +478,62 @@ const HomeScreen: React.FC = () => {
     ? !officialCommunities.some(c => c.slug === selectedCommunitySlug)
     : false;
 
+  const renderListHeader = () => (
+    <View>
+      {/* Community tabs dentro del FlatList */}
+      {!isDesktop && !isUserCommunityFeed && (
+        <View style={[styles.communityTabContainer, { borderBottomColor: theme.colors.border }]}>
+          {renderCommunitySelector()}
+        </View>
+      )}
+      {/* Indicador de filtrado */}
+      {filtering && (
+        <View style={styles.filteringIndicator}>
+          <ActivityIndicator size="small" color={theme.colors.accent} />
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Animated Header - fijo arriba */}
+      {/* Header fijo arriba (NO absolute, layout normal) */}
       {!isDesktop && (
-        <Animated.View
-          style={[
-            styles.animatedHeader,
-            {
-              backgroundColor: theme.colors.background,
-              transform: [{ translateY: headerTranslateY }],
-            },
-          ]}
-        >
-          <View onLayout={(event) => {
-            const { height } = event.nativeEvent.layout;
-            setHeaderHeight(height);
-          }}>
-            {isFromLanding ? (
-              // Header con boton de volver para cuando viene de Landing
-              <View style={[styles.feedHeader, { paddingTop: insets.top + SPACING.sm }]}>
-                <TouchableOpacity
-                  style={styles.backButton}
-                  onPress={handleBackToLanding}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="arrow-back" size={scale(24)} color={theme.colors.text} />
-                </TouchableOpacity>
-                <Text style={[styles.feedHeaderTitle, { color: theme.colors.text }]} numberOfLines={1}>
-                  {getSelectedCommunityName()}
-                </Text>
-                <View style={styles.headerSpacer} />
-              </View>
-            ) : (
-              <Header onNotificationsPress={handleNotificationsPress} />
-            )}
-          </View>
-
-          {!isUserCommunityFeed && (
-            <View
-              onLayout={(event) => {
-                const { height } = event.nativeEvent.layout;
-                setTabsHeight(height);
-              }}
-              style={[styles.communityTabContainer, { borderBottomColor: theme.colors.border }]}
-            >
-              {renderCommunitySelector()}
+        <View style={{ backgroundColor: theme.colors.background }}>
+          {isFromLanding ? (
+            <View style={[styles.feedHeader, { paddingTop: insets.top + SPACING.sm }]}>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={handleBackToLanding}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="arrow-back" size={scale(24)} color={theme.colors.text} />
+              </TouchableOpacity>
+              <Text style={[styles.feedHeaderTitle, { color: theme.colors.text }]} numberOfLines={1}>
+                {getSelectedCommunityName()}
+              </Text>
+              <View style={styles.headerSpacer} />
             </View>
+          ) : (
+            <Header onNotificationsPress={handleNotificationsPress} />
           )}
-        </Animated.View>
+        </View>
       )}
 
-      {/* Feed con padding top para compensar el header */}
-      <Animated.FlatList
+      {/* Feed con pull-to-refresh */}
+      <FlatList
         ref={flatListRef}
         data={posts}
+        extraData={visiblePostIds}
         renderItem={renderPost}
         keyExtractor={item => item.id || item.userId}
         contentContainerStyle={[
-          { paddingTop: !isDesktop ? headerHeight + tabsHeight + SPACING.md : 0 },
           posts.length === 0 && styles.emptyContainer
         ]}
         showsVerticalScrollIndicator={false}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          {
-            useNativeDriver: true,
-            listener: (event: any) => {
-              currentScrollPosition.current = event.nativeEvent.contentOffset.y;
-            }
-          }
-        )}
+        onScroll={(event) => {
+          currentScrollPosition.current = event.nativeEvent.contentOffset.y;
+        }}
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
@@ -547,11 +541,12 @@ const HomeScreen: React.FC = () => {
             onRefresh={onRefresh}
             tintColor={theme.colors.accent}
             colors={[theme.colors.accent]}
-            progressViewOffset={headerHeight + tabsHeight}
           />
         }
         onEndReached={loadMorePosts}
         onEndReachedThreshold={0.5}
+        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
+        ListHeaderComponent={renderListHeader}
         ListFooterComponent={() =>
           loadingMore ? (
             <View style={styles.loadingMore}>
@@ -559,13 +554,6 @@ const HomeScreen: React.FC = () => {
               <Text style={[styles.loadingMoreText, { color: theme.colors.textSecondary }]}>
                 Cargando más posts...
               </Text>
-            </View>
-          ) : null
-        }
-        ListHeaderComponent={() =>
-          filtering ? (
-            <View style={styles.filteringIndicator}>
-              <ActivityIndicator size="small" color={theme.colors.accent} />
             </View>
           ) : null
         }
@@ -605,13 +593,6 @@ const HomeScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  animatedHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
   },
   feedHeader: {
     flexDirection: 'row',

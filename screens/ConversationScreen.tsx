@@ -77,7 +77,7 @@ const ConversationScreen: React.FC = () => {
           };
 
           convId = await messagesService.getOrCreateConversation(
-            user.uid,
+            userProfile.uid,
             otherUserId,
             currentUserData,
             otherUserData
@@ -93,7 +93,7 @@ const ConversationScreen: React.FC = () => {
           setMessages(initialMessages);
 
           // Marcar mensajes como leídos
-          await messagesService.markAsRead(convId, user.uid);
+          await messagesService.markAsRead(convId, userProfile.uid);
         }
 
         setLoading(false);
@@ -114,8 +114,8 @@ const ConversationScreen: React.FC = () => {
       setMessages(newMessages);
 
       // Marcar como leído cuando llegan nuevos mensajes
-      if (user) {
-        messagesService.markAsRead(conversationId, user.uid);
+      if (userProfile) {
+        messagesService.markAsRead(conversationId, userProfile.uid);
       }
 
       // Scroll al último mensaje
@@ -132,7 +132,7 @@ const ConversationScreen: React.FC = () => {
 
     try {
       setSending(true);
-      await messagesService.sendMessage(conversationId, user.uid, content.trim());
+      await messagesService.sendMessage(conversationId, userProfile?.uid || user.uid, content.trim());
       setSending(false);
 
       // Scroll al último mensaje después de enviar
@@ -174,13 +174,13 @@ const ConversationScreen: React.FC = () => {
         // Subir imagen a Firebase Storage
         const imageUrl = await uploadMessageImageFromUri(
           result.assets[0].uri,
-          user.uid
+          userProfile?.uid || user.uid
         );
 
         // Enviar mensaje con la imagen
         await messagesService.sendMessage(
           conversationId,
-          user.uid,
+          userProfile?.uid || user.uid,
           'Imagen',
           'image',
           imageUrl
@@ -202,7 +202,8 @@ const ConversationScreen: React.FC = () => {
 
   const renderMessage = ({ item }: { item: Message }) => {
     if (!user) return null;
-    return <MessageBubble message={item} isCurrentUser={item.senderId === user.uid} />;
+    const activeUid = userProfile?.uid || user.uid;
+    return <MessageBubble message={item} isCurrentUser={item.senderId === activeUid} />;
   };
 
   if (loading) {

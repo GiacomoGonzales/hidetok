@@ -21,6 +21,27 @@ import { predefinedAvatars } from './AvatarSVGs';
 
 const { width: screenWidth } = Dimensions.get('window');
 
+// --- DiceBear ---
+const DICEBEAR_STYLES = [
+  { id: 'adventurer', name: 'Aventurero' },
+  { id: 'lorelei', name: 'Lorelei' },
+  { id: 'bottts', name: 'Robots' },
+  { id: 'fun-emoji', name: 'Emoji' },
+  { id: 'notionists', name: 'Notion' },
+  { id: 'big-smile', name: 'Sonrisa' },
+  { id: 'personas', name: 'Personas' },
+  { id: 'micah', name: 'Micah' },
+];
+
+const AVATAR_SEEDS = ['Aria', 'Felix', 'Luna', 'Storm', 'Nova', 'Zoe'];
+
+export const getDiceBearUrl = (style: string, seed: string, size: number = 256) =>
+  `https://api.dicebear.com/9.x/${style}/png?seed=${encodeURIComponent(seed)}&size=${size}`;
+
+export const isDiceBearUrl = (url?: string | null): boolean =>
+  typeof url === 'string' && url.startsWith('https://api.dicebear.com');
+
+// --- Props ---
 interface AvatarPickerProps {
   currentAvatar?: string;
   currentAvatarType?: 'predefined' | 'custom';
@@ -58,15 +79,15 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
       });
 
       // Calcular recorte cuadrado desde el centro
-      const size = Math.min(width, height);
-      const originX = (width - size) / 2;
-      const originY = (height - size) / 2;
+      const cropSize = Math.min(width, height);
+      const originX = (width - cropSize) / 2;
+      const originY = (height - cropSize) / 2;
 
       // Recortar y redimensionar
       const manipResult = await ImageManipulator.manipulateAsync(
         uri,
         [
-          { crop: { originX, originY, width: size, height: size } },
+          { crop: { originX, originY, width: cropSize, height: cropSize } },
           { resize: { width: 800 } }, // Tamaño final
         ],
         { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
@@ -77,6 +98,12 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
       console.error('Error cropping image:', error);
       return uri; // Si falla, usar imagen original
     }
+  };
+
+  const handleDiceBearSelect = (style: string, seed: string) => {
+    const url = getDiceBearUrl(style, seed);
+    onAvatarSelect({ type: 'custom', uri: url });
+    setShowPicker(false);
   };
 
   const handlePredefinedAvatarSelect = (avatarId: string) => {
@@ -157,7 +184,7 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
   const takePhoto = async () => {
     try {
       const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-      
+
       if (!permissionResult.granted) {
         Alert.alert(
           'Permisos necesarios',
@@ -197,7 +224,7 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
       return (
         <Image
           source={{ uri: currentAvatar }}
-          style={[styles.avatar, { width: size, height: size }]}
+          style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}
         />
       );
     }
@@ -217,9 +244,9 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
     return (
       <View style={[
         styles.defaultAvatar,
-        { 
-          width: size, 
-          height: size, 
+        {
+          width: size,
+          height: size,
           backgroundColor: theme.colors.surface,
           borderColor: theme.colors.border,
         }
@@ -274,7 +301,7 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
               style={[styles.modalBody, isDesktop && styles.desktopModalBody]}
               showsVerticalScrollIndicator={false}
             >
-              {/* Opciones de cámara */}
+              {/* Opciones de cámara / galería */}
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
                   Foto personalizada
@@ -310,40 +337,53 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
                 </View>
               </View>
 
-              {/* Avatares predefinidos */}
+              {/* DiceBear Avatars */}
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                  Avatares predefinidos
+                  Avatares
                 </Text>
-                
-                <View style={styles.avatarsGrid}>
-                  {predefinedAvatars.map((avatar) => {
-                    const AvatarComponent = avatar.component;
-                    const isSelected = currentAvatarType === 'predefined' && currentAvatarId === avatar.id;
-                    
-                    return (
-                      <TouchableOpacity
-                        key={avatar.id}
-                        style={[
-                          styles.avatarOption,
-                          isSelected && { 
-                            borderColor: theme.colors.accent,
-                            borderWidth: 3,
-                          }
-                        ]}
-                        onPress={() => handlePredefinedAvatarSelect(avatar.id)}
-                      >
-                        <AvatarComponent
-                          size={60}
-                          backgroundColor={avatar.color}
-                        />
-                        <Text style={[styles.avatarName, { color: theme.colors.textSecondary }]}>
-                          {avatar.name}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+
+                {DICEBEAR_STYLES.map((style) => (
+                  <View key={style.id} style={styles.dicebearStyleSection}>
+                    <Text style={[styles.dicebearStyleName, { color: theme.colors.textSecondary }]}>
+                      {style.name}
+                    </Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.dicebearRow}
+                    >
+                      {AVATAR_SEEDS.map((seed) => {
+                        const url = getDiceBearUrl(style.id, seed, 128);
+                        const isSelected =
+                          currentAvatarType === 'custom' &&
+                          currentAvatar &&
+                          isDiceBearUrl(currentAvatar) &&
+                          currentAvatar.includes(style.id) &&
+                          currentAvatar.includes(seed);
+
+                        return (
+                          <TouchableOpacity
+                            key={seed}
+                            style={[
+                              styles.dicebearOption,
+                              { backgroundColor: theme.colors.surface },
+                              isSelected && { borderColor: theme.colors.accent, borderWidth: 2.5 },
+                            ]}
+                            onPress={() => handleDiceBearSelect(style.id, seed)}
+                            activeOpacity={0.7}
+                          >
+                            <Image
+                              source={{ uri: url }}
+                              style={styles.dicebearPreview}
+                              resizeMode="cover"
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                ))}
               </View>
 
               {uploading && (
@@ -438,7 +478,7 @@ const styles = StyleSheet.create({
     maxHeight: 500,
   },
   section: {
-    marginBottom: 30,
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 16,
@@ -460,24 +500,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  avatarsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-    justifyContent: 'space-between',
+  // DiceBear styles
+  dicebearStyleSection: {
+    marginBottom: 16,
   },
-  avatarOption: {
-    alignItems: 'center',
-    padding: 8,
-    borderRadius: 12,
-    borderWidth: 2,
+  dicebearStyleName: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  dicebearRow: {
+    gap: 10,
+    paddingRight: 8,
+  },
+  dicebearOption: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    overflow: 'hidden',
+    borderWidth: 1.5,
     borderColor: 'transparent',
-    width: '30%',
   },
-  avatarName: {
-    fontSize: 12,
-    marginTop: 8,
-    textAlign: 'center',
+  dicebearPreview: {
+    width: '100%',
+    height: '100%',
   },
   uploadingContainer: {
     alignItems: 'center',

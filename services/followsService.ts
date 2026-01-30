@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   setDoc,
+  updateDoc,
   deleteDoc,
   getDoc,
   getDocs,
@@ -105,20 +106,10 @@ class FollowsService {
       });
 
       // Incrementar contador 'following' del seguidor
-      // Usar set con merge para crear el campo si no existe
-      batch.set(
-        followerUserRef,
-        { following: increment(1) },
-        { merge: true }
-      );
+      batch.update(followerUserRef, { following: increment(1) });
 
       // Incrementar contador 'followers' del seguido
-      // Usar set con merge para crear el campo si no existe
-      batch.set(
-        followingUserRef,
-        { followers: increment(1) },
-        { merge: true }
-      );
+      batch.update(followingUserRef, { followers: increment(1) });
 
       await batch.commit();
       console.log('✅ [FollowsService] Follow guardado exitosamente');
@@ -201,20 +192,10 @@ class FollowsService {
       batch.delete(followRef);
 
       // Decrementar contador 'following' del seguidor
-      // Usar set con merge para manejar documentos que no existen
-      batch.set(
-        followerUserRef,
-        { following: increment(-1) },
-        { merge: true }
-      );
+      batch.update(followerUserRef, { following: increment(-1) });
 
       // Decrementar contador 'followers' del seguido
-      // Usar set con merge para manejar documentos que no existen
-      batch.set(
-        followingUserRef,
-        { followers: increment(-1) },
-        { merge: true }
-      );
+      batch.update(followingUserRef, { followers: increment(-1) });
 
       await batch.commit();
       console.log('✅ [FollowsService] Unfollow exitoso');
@@ -476,14 +457,10 @@ class FollowsService {
 
       if (!userSnapshot.empty) {
         const userRef = userSnapshot.docs[0].ref;
-        await setDoc(
-          userRef,
-          {
-            followers: followersCount,
-            following: followingCount,
-          },
-          { merge: true }
-        );
+        await updateDoc(userRef, {
+          followers: followersCount,
+          following: followingCount,
+        });
       }
 
       return { followers: followersCount, following: followingCount };
@@ -521,7 +498,7 @@ class FollowsService {
 
         if (!otherUserSnapshot.empty) {
           const otherUserRef = otherUserSnapshot.docs[0].ref;
-          batch.set(otherUserRef, { followers: increment(-1) }, { merge: true });
+          batch.update(otherUserRef, { followers: increment(-1) });
         }
       }
 
@@ -536,7 +513,7 @@ class FollowsService {
 
         if (!otherUserSnapshot.empty) {
           const otherUserRef = otherUserSnapshot.docs[0].ref;
-          batch.set(otherUserRef, { following: increment(-1) }, { merge: true });
+          batch.update(otherUserRef, { following: increment(-1) });
         }
       }
 
