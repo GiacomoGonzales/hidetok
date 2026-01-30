@@ -4,12 +4,14 @@ import { createStackNavigator } from '@react-navigation/stack';
 import LandingScreen from '../screens/LandingScreen';
 import HomeScreen from '../screens/HomeScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
+import CommunitiesManagementScreen from '../screens/CommunitiesManagementScreen';
 
 export type HomeStackParamList = {
   Landing: undefined;
   Feed: { communityId?: string | null; communitySlug?: string | null } | undefined;
   HomeFeed: undefined;
   Notifications: undefined;
+  ExploreCommunities: undefined;
 };
 
 const Stack = createStackNavigator<HomeStackParamList>();
@@ -36,6 +38,10 @@ const HomeStackNavigator: React.FC = () => {
       <Stack.Screen
         name="Notifications"
         component={NotificationsScreen}
+      />
+      <Stack.Screen
+        name="ExploreCommunities"
+        component={CommunitiesManagementScreen}
       />
     </Stack.Navigator>
   );

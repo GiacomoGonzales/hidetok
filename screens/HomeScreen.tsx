@@ -107,14 +107,17 @@ const HomeScreen: React.FC = () => {
   }, [paramCommunityId, paramCommunitySlug, isFromLanding, officialCommunities]);
 
   // Validar que la comunidad seleccionada exista por slug, si no, resetear a "Todas"
+  // Solo resetear si es una comunidad oficial que no se encontró (las de usuario se permiten siempre)
   useEffect(() => {
     if (selectedCommunitySlug && !communitiesLoading) {
-      const communityExists = officialCommunities.some(c => c.slug === selectedCommunitySlug);
-      if (!communityExists) {
+      const existsInAll = officialCommunities.some(c => c.slug === selectedCommunitySlug);
+      // Si no existe en oficiales, verificar si es un slug válido que viene de parámetros
+      // (comunidad de usuario) — en ese caso no resetear
+      if (!existsInAll && !paramCommunitySlug && !paramCommunityId) {
         setSelectedCommunitySlug(null);
       }
     }
-  }, [selectedCommunitySlug, officialCommunities, communitiesLoading]);
+  }, [selectedCommunitySlug, officialCommunities, communitiesLoading, paramCommunitySlug, paramCommunityId]);
 
   // Precargar comunidades en el cache para que PostCard las muestre rápido
   useEffect(() => {
@@ -408,7 +411,7 @@ const HomeScreen: React.FC = () => {
   // Obtener la comunidad seleccionada
   const getSelectedCommunity = () => {
     if (!selectedCommunitySlug) return null;
-    return officialCommunities.find(c => c.slug === selectedCommunitySlug);
+    return getCommunityBySlug(selectedCommunitySlug) || null;
   };
 
   // Loading state
@@ -457,9 +460,14 @@ const HomeScreen: React.FC = () => {
   // Obtener nombre de la comunidad seleccionada
   const getSelectedCommunityName = () => {
     if (!selectedCommunitySlug) return 'Todas las comunidades';
-    const community = officialCommunities.find(c => c.slug === selectedCommunitySlug);
-    return community?.name || 'Comunidad';
+    const community = getCommunityBySlug(selectedCommunitySlug);
+    return community?.name || selectedCommunitySlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
+
+  // Determinar si la comunidad seleccionada es de usuario (no oficial)
+  const isUserCommunityFeed = selectedCommunitySlug
+    ? !officialCommunities.some(c => c.slug === selectedCommunitySlug)
+    : false;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -498,15 +506,17 @@ const HomeScreen: React.FC = () => {
             )}
           </View>
 
-          <View
-            onLayout={(event) => {
-              const { height } = event.nativeEvent.layout;
-              setTabsHeight(height);
-            }}
-            style={[styles.communityTabContainer, { borderBottomColor: theme.colors.border }]}
-          >
-            {renderCommunitySelector()}
-          </View>
+          {!isUserCommunityFeed && (
+            <View
+              onLayout={(event) => {
+                const { height } = event.nativeEvent.layout;
+                setTabsHeight(height);
+              }}
+              style={[styles.communityTabContainer, { borderBottomColor: theme.colors.border }]}
+            >
+              {renderCommunitySelector()}
+            </View>
+          )}
         </Animated.View>
       )}
 

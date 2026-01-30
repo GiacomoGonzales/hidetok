@@ -17,6 +17,7 @@ import ProfileStackNavigator from './ProfileStackNavigator';
 import { MainStackParamList } from './MainStackNavigator';
 import CustomTabBar from '../components/CustomTabBar';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
+import { useAuth } from '../contexts/AuthContext';
 
 // Componentes dummy para pestañas que abren modales
 const SearchTabPlaceholder = () => null;
@@ -29,24 +30,28 @@ type TabNavigatorNavigationProp = StackNavigationProp<MainStackParamList>;
 // Componentes personalizados para los botones de tab
 const SearchTabButton = (props: any) => {
   const navigation = useNavigation<TabNavigatorNavigationProp>();
+  const { user } = useAuth();
 
   return (
     <TouchableOpacity
       {...props}
       onPress={() => {
-        console.log('🔍 Search button pressed');
+        if (!user) {
+          const parentNav = navigation.getParent();
+          if (parentNav) {
+            (parentNav as any).navigate('Register');
+          }
+          return;
+        }
         try {
           const parentNav = navigation.getParent();
-          console.log('🔍 Parent navigation:', parentNav ? 'exists' : 'null');
           if (parentNav) {
-            console.log('🔍 Navigating to Search...');
             (parentNav as any).navigate('Search');
           } else {
-            console.log('🔍 Trying direct navigation...');
             (navigation as any).navigate('Search');
           }
         } catch (error) {
-          console.error('🔍 Error navigating to Search:', error);
+          console.error('Error navigating to Search:', error);
         }
       }}
     />
@@ -55,24 +60,28 @@ const SearchTabButton = (props: any) => {
 
 const CreateTabButton = (props: any) => {
   const navigation = useNavigation<TabNavigatorNavigationProp>();
+  const { user } = useAuth();
 
   return (
     <TouchableOpacity
       {...props}
       onPress={() => {
-        console.log('➕ Create button pressed');
+        if (!user) {
+          const parentNav = navigation.getParent();
+          if (parentNav) {
+            (parentNav as any).navigate('Register');
+          }
+          return;
+        }
         try {
           const parentNav = navigation.getParent();
-          console.log('➕ Parent navigation:', parentNav ? 'exists' : 'null');
           if (parentNav) {
-            console.log('➕ Navigating to Create...');
             (parentNav as any).navigate('Create');
           } else {
-            console.log('➕ Trying direct navigation...');
             (navigation as any).navigate('Create');
           }
         } catch (error) {
-          console.error('➕ Error navigating to Create:', error);
+          console.error('Error navigating to Create:', error);
         }
       }}
     />
@@ -81,6 +90,7 @@ const CreateTabButton = (props: any) => {
 
 const TabNavigator: React.FC = () => {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const { userProfile } = useUserProfile();
   const { triggerScrollToTop } = useScroll();
   const { isDesktop, isTablet } = useResponsive();
@@ -220,15 +230,37 @@ const TabNavigator: React.FC = () => {
           tabBarButton: (props) => <CreateTabButton {...props} />
         }}
       />
-      <Tab.Screen 
-        name="Inbox" 
+      <Tab.Screen
+        name="Inbox"
         component={InboxStackNavigator}
         options={{ tabBarLabel: 'Inbox' }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            if (!user) {
+              e.preventDefault();
+              const parentNav = navigation.getParent();
+              if (parentNav) {
+                (parentNav as any).navigate('Register');
+              }
+            }
+          },
+        })}
       />
-      <Tab.Screen 
-        name="Profile" 
+      <Tab.Screen
+        name="Profile"
         component={ProfileStackNavigator}
         options={{ tabBarLabel: 'Perfil' }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            if (!user) {
+              e.preventDefault();
+              const parentNav = navigation.getParent();
+              if (parentNav) {
+                (parentNav as any).navigate('Register');
+              }
+            }
+          },
+        })}
       />
     </Tab.Navigator>
   );

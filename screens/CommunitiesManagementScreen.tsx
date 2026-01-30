@@ -8,10 +8,12 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
@@ -26,32 +28,46 @@ const CommunitiesManagementScreen: React.FC = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
 
+  // Comunidades de ejemplo (simulan comunidades creadas por usuarios)
+  const EXAMPLE_COMMUNITIES: Community[] = [
+    { id: 'ex-beatles', name: 'Los Beatles', slug: 'los-beatles', description: 'Para fans de los Beatles. Discutimos albums, canciones y la historia de la banda.', icon: 'musical-notes', rules: [], memberCount: 4820, postCount: 312, createdAt: {} as any, updatedAt: {} as any, isOfficial: false, moderators: [], status: 'active' },
+    { id: 'ex-tarot', name: 'Tarot & Lectura', slug: 'tarot-lectura', description: 'Comunidad de tarot, astrologia y lectura de cartas. Comparte tus tiradas.', icon: 'moon', rules: [], memberCount: 3150, postCount: 187, createdAt: {} as any, updatedAt: {} as any, isOfficial: false, moderators: [], status: 'active' },
+    { id: 'ex-recetas', name: 'Recetas de la Abuela', slug: 'recetas-abuela', description: 'Recetas caseras tradicionales que nos recuerdan a la abuela. Cocina con amor.', icon: 'cafe', rules: [], memberCount: 2670, postCount: 245, createdAt: {} as any, updatedAt: {} as any, isOfficial: false, moderators: [], status: 'active' },
+    { id: 'ex-memes', name: 'Memes Argentinos', slug: 'memes-argentinos', description: 'Los mejores memes argentinos. Humor criollo para alegrar el dia.', icon: 'happy', rules: [], memberCount: 5420, postCount: 890, createdAt: {} as any, updatedAt: {} as any, isOfficial: false, moderators: [], status: 'active' },
+    { id: 'ex-truecrime', name: 'True Crime Latino', slug: 'true-crime-latino', description: 'Casos criminales reales de Latinoamerica. Analisis y discusion respetuosa.', icon: 'skull', rules: [], memberCount: 1980, postCount: 134, createdAt: {} as any, updatedAt: {} as any, isOfficial: false, moderators: [], status: 'active' },
+    { id: 'ex-plantas', name: 'Plantitas & Jardin', slug: 'plantitas-jardin', description: 'Consejos de jardineria, cuidado de plantas, propagacion y mas.', icon: 'leaf', rules: [], memberCount: 1340, postCount: 98, createdAt: {} as any, updatedAt: {} as any, isOfficial: false, moderators: [], status: 'active' },
+    { id: 'ex-rock', name: 'Rock Nacional', slug: 'rock-nacional', description: 'Rock argentino y latinoamericano. Clasicos y nuevas bandas.', icon: 'radio', rules: [], memberCount: 3890, postCount: 267, createdAt: {} as any, updatedAt: {} as any, isOfficial: false, moderators: [], status: 'active' },
+    { id: 'ex-cats', name: 'Cat Lovers', slug: 'cat-lovers', description: 'Amantes de los gatos. Comparte fotos, consejos y experiencias felinas.', icon: 'paw', rules: [], memberCount: 4210, postCount: 523, createdAt: {} as any, updatedAt: {} as any, isOfficial: false, moderators: [], status: 'active' },
+    { id: 'ex-yoga', name: 'Yoga & Meditacion', slug: 'yoga-meditacion', description: 'Practica yoga, meditacion y mindfulness. Comparte tu camino interior.', icon: 'body', rules: [], memberCount: 2100, postCount: 156, createdAt: {} as any, updatedAt: {} as any, isOfficial: false, moderators: [], status: 'active' },
+    { id: 'ex-fotografia', name: 'Fotografia Urbana', slug: 'fotografia-urbana', description: 'Fotos de ciudades, street photography y paisajes urbanos.', icon: 'camera', rules: [], memberCount: 1870, postCount: 342, createdAt: {} as any, updatedAt: {} as any, isOfficial: false, moderators: [], status: 'active' },
+    { id: 'ex-pelis', name: 'Cinefilia Total', slug: 'cinefilia-total', description: 'Cine de autor, clasicos, peliculas independientes. Debate y recomendaciones.', icon: 'videocam', rules: [], memberCount: 3340, postCount: 412, createdAt: {} as any, updatedAt: {} as any, isOfficial: false, moderators: [], status: 'active' },
+    { id: 'ex-runners', name: 'Runners BA', slug: 'runners-ba', description: 'Corredores de Buenos Aires. Carreras, entrenamientos y rutas.', icon: 'walk', rules: [], memberCount: 1560, postCount: 89, createdAt: {} as any, updatedAt: {} as any, isOfficial: false, moderators: [], status: 'active' },
+  ];
+
   const [communities, setCommunities] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [joiningCommunity, setJoiningCommunity] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Comunidades a las que el usuario pertenece
   const joinedCommunityIds = userProfile?.joinedCommunities || [];
 
   const loadCommunities = useCallback(async () => {
     try {
-      console.log('🔄 Cargando comunidades...');
-      console.log('📋 joinedCommunityIds del perfil:', joinedCommunityIds);
+      // Cargar comunidades reales creadas por usuarios
+      const realCommunities = await communityService.getUserCommunities();
 
-      // Usar getOfficialCommunities que no requiere índice compuesto
-      const allCommunities = await communityService.getOfficialCommunities();
-      console.log('✅ Comunidades cargadas:', allCommunities.length);
-      console.log('📋 IDs de comunidades:', allCommunities.map(c => c.id));
-
-      // Verificar si hay match con los IDs del usuario
-      const matches = allCommunities.filter(c => c.id && joinedCommunityIds.includes(c.id));
-      console.log('🔗 Comunidades que coinciden:', matches.length);
-
-      setCommunities(allCommunities);
+      // Combinar reales + ejemplo (reales primero)
+      const exampleIds = new Set(EXAMPLE_COMMUNITIES.map(c => c.slug));
+      const filteredExamples = EXAMPLE_COMMUNITIES.filter(
+        ex => !realCommunities.some(r => r.slug === ex.slug)
+      );
+      setCommunities([...realCommunities, ...filteredExamples]);
     } catch (error) {
       console.error('Error loading communities:', error);
-      Alert.alert('Error', 'No se pudieron cargar las comunidades');
+      // Si falla la carga, mostrar al menos las de ejemplo
+      setCommunities(EXAMPLE_COMMUNITIES);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -67,8 +83,17 @@ const CommunitiesManagementScreen: React.FC = () => {
     loadCommunities();
   };
 
+  const navigateToRegister = () => {
+    const tabNav = navigation.getParent();
+    const mainNav = tabNav?.getParent();
+    if (mainNav) {
+      (mainNav as any).navigate('Register');
+    }
+  };
+
   const handleToggleCommunity = async (community: Community) => {
-    if (!user || !community.id) return;
+    if (!user) { navigateToRegister(); return; }
+    if (!community.id) return;
 
     const isJoined = joinedCommunityIds.includes(community.id);
     setJoiningCommunity(community.id);
@@ -132,14 +157,25 @@ const CommunitiesManagementScreen: React.FC = () => {
     const isToggling = joiningCommunity === item.id;
 
     return (
-      <View style={[styles.communityItem, { backgroundColor: theme.colors.card }]}>
-        <View style={[styles.communityIcon, { backgroundColor: theme.colors.surface }]}>
-          <Ionicons
-            name={item.icon as any || 'people'}
-            size={24}
-            color={theme.colors.accent}
+      <TouchableOpacity
+        style={[styles.communityItem, { backgroundColor: theme.colors.card }]}
+        onPress={() => navigation.navigate('Feed' as any, { communitySlug: item.slug })}
+        activeOpacity={0.7}
+      >
+        {item.imageUrl ? (
+          <Image
+            source={{ uri: item.imageThumbnailUrl || item.imageUrl }}
+            style={styles.communityImage}
           />
-        </View>
+        ) : (
+          <View style={[styles.communityIcon, { backgroundColor: theme.colors.surface }]}>
+            <Ionicons
+              name={item.icon as any || 'people'}
+              size={24}
+              color={theme.colors.accent}
+            />
+          </View>
+        )}
 
         <View style={styles.communityInfo}>
           <View style={styles.communityHeader}>
@@ -196,7 +232,7 @@ const CommunitiesManagementScreen: React.FC = () => {
             </>
           )}
         </TouchableOpacity>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -213,9 +249,18 @@ const CommunitiesManagementScreen: React.FC = () => {
     </View>
   );
 
+  // Filtrar por búsqueda
+  const normalizedQuery = searchQuery.toLowerCase().trim();
+  const filtered = normalizedQuery
+    ? communities.filter(c =>
+        c.name.toLowerCase().includes(normalizedQuery) ||
+        c.description.toLowerCase().includes(normalizedQuery)
+      )
+    : communities;
+
   // Separar comunidades unidas y disponibles
-  const joinedCommunities = communities.filter(c => c.id && joinedCommunityIds.includes(c.id));
-  const availableCommunities = communities.filter(c => c.id && !joinedCommunityIds.includes(c.id));
+  const joinedCommunities = filtered.filter(c => c.id && joinedCommunityIds.includes(c.id));
+  const availableCommunities = filtered.filter(c => c.id && !joinedCommunityIds.includes(c.id));
 
   if (loading) {
     return (
@@ -244,9 +289,29 @@ const CommunitiesManagementScreen: React.FC = () => {
           <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-          Mis Comunidades
+          Comunidades
         </Text>
         <View style={styles.headerRight} />
+      </View>
+
+      {/* Buscador */}
+      <View style={[styles.searchContainer, { borderBottomColor: theme.colors.border }]}>
+        <View style={[styles.searchInputWrapper, { backgroundColor: theme.colors.surface }]}>
+          <Ionicons name="search" size={scale(18)} color={theme.colors.textSecondary} />
+          <TextInput
+            style={[styles.searchInput, { color: theme.colors.text }]}
+            placeholder="Buscar comunidades..."
+            placeholderTextColor={theme.colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} activeOpacity={0.7}>
+              <Ionicons name="close-circle" size={scale(18)} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <FlatList
@@ -322,6 +387,24 @@ const styles = StyleSheet.create({
   headerRight: {
     width: 40,
   },
+  searchContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 0.5,
+  },
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FONT_SIZE.base,
+    paddingVertical: 0,
+  },
   loadingText: {
     marginTop: SPACING.md,
     fontSize: FONT_SIZE.base,
@@ -367,6 +450,11 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  communityImage: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: BORDER_RADIUS.md,
   },
   communityInfo: {
     flex: 1,

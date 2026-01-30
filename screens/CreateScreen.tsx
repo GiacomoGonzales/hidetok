@@ -21,7 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { postsService } from '../services/firestoreService';
-import { uploadPostImage } from '../services/storageService';
+import { uploadPostImage, uploadCommunityImage } from '../services/storageService';
 import { communityService, CATEGORY_TAGS } from '../services/communityService';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
@@ -94,6 +94,8 @@ interface SelectableCategory {
   name: string;
   icon: string;
   slug: string;
+  imageUrl?: string;
+  imageThumbnailUrl?: string;
 }
 
 interface MediaItem {
@@ -126,6 +128,8 @@ const CreateScreen: React.FC = () => {
   const [newCommunityName, setNewCommunityName] = useState('');
   const [newCommunityDescription, setNewCommunityDescription] = useState('');
   const [newCommunityIcon, setNewCommunityIcon] = useState('chatbubbles');
+  const [newCommunityImageUri, setNewCommunityImageUri] = useState<string | null>(null);
+  const [isUploadingCommunityImage, setIsUploadingCommunityImage] = useState(false);
   const [isCreatingCommunity, setIsCreatingCommunity] = useState(false);
 
   const [postText, setPostText] = useState('');
@@ -167,6 +171,8 @@ const CreateScreen: React.FC = () => {
           name: c.name,
           icon: c.icon,
           slug: c.slug,
+          imageUrl: c.imageUrl,
+          imageThumbnailUrl: c.imageThumbnailUrl,
         }));
         setUserCommunities(mapped);
       } catch (error) {
@@ -209,12 +215,37 @@ const CreateScreen: React.FC = () => {
 
     setIsCreatingCommunity(true);
     try {
+      let imageUrl: string | undefined;
+      let imageThumbnailUrl: string | undefined;
+
+      // Subir imagen si hay una seleccionada
+      if (newCommunityImageUri) {
+        setIsUploadingCommunityImage(true);
+        try {
+          const { fullSize, thumbnail } = await uploadCommunityImage(
+            newCommunityImageUri,
+            user.uid
+          );
+          imageUrl = fullSize;
+          imageThumbnailUrl = thumbnail;
+        } catch (uploadError) {
+          console.error('Error uploading community image:', uploadError);
+          Alert.alert('Error', 'No se pudo subir la imagen. Intenta de nuevo.');
+          setIsUploadingCommunityImage(false);
+          setIsCreatingCommunity(false);
+          return;
+        }
+        setIsUploadingCommunityImage(false);
+      }
+
       await communityService.createCommunity({
         name: newCommunityName.trim(),
         description: newCommunityDescription.trim() || `Categoría creada por la comunidad`,
         icon: newCommunityIcon,
         rules: ['Se respetuoso', 'No spam'],
         createdBy: user.uid,
+        imageUrl,
+        imageThumbnailUrl,
       });
 
       Alert.alert(
@@ -227,6 +258,7 @@ const CreateScreen: React.FC = () => {
       setNewCommunityName('');
       setNewCommunityDescription('');
       setNewCommunityIcon('chatbubbles');
+      setNewCommunityImageUri(null);
 
       // Recargar categorías de usuarios
       const communities = await communityService.getUserCommunities();
@@ -235,6 +267,8 @@ const CreateScreen: React.FC = () => {
         name: c.name,
         icon: c.icon,
         slug: c.slug,
+        imageUrl: c.imageUrl,
+        imageThumbnailUrl: c.imageThumbnailUrl,
       }));
       setUserCommunities(mapped);
     } catch (error: any) {
@@ -541,7 +575,7 @@ const CreateScreen: React.FC = () => {
         multiline
         maxLength={maxTextLength + 50} // Permitir exceso para mostrar error
         textAlignVertical="top"
-        autoFocus={true}
+        autoFocus={false}
       />
     </View>
   );
@@ -968,7 +1002,7 @@ const CreateScreen: React.FC = () => {
                     <View
                       style={[
                         styles.communityIconContainer,
-                        {
+                        community.imageUrl ? {} : {
                           backgroundColor: color,
                           shadowColor: color,
                           shadowOffset: { width: 0, height: 3 },
@@ -978,11 +1012,18 @@ const CreateScreen: React.FC = () => {
                         },
                       ]}
                     >
-                      <Ionicons
-                        name={community.icon as any}
-                        size={scale(20)}
-                        color="white"
-                      />
+                      {community.imageUrl ? (
+                        <Image
+                          source={{ uri: community.imageThumbnailUrl || community.imageUrl }}
+                          style={styles.customCategoryIcon}
+                        />
+                      ) : (
+                        <Ionicons
+                          name={community.icon as any}
+                          size={scale(20)}
+                          color="white"
+                        />
+                      )}
                     </View>
                     <Text
                       style={[
@@ -1121,24 +1162,32 @@ const CreateScreen: React.FC = () => {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Modal para crear nueva categoría */}
+      {/* Pantalla completa para crear nueva categoría */}
       <Modal
         visible={showCreateModal}
         animationType="slide"
-        transparent={true}
+        transparent={false}
         onRequestClose={() => setShowCreateModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.background }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
-                Crear Nueva Categoría
-              </Text>
-              <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-                <Ionicons name="close" size={scale(24)} color={theme.colors.text} />
-              </TouchableOpacity>
-            </View>
+        <SafeAreaView style={[styles.modalFullScreen, { backgroundColor: theme.colors.background }]} edges={['top', 'bottom']}>
+          {/* Header */}
+          <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
+            <TouchableOpacity onPress={() => setShowCreateModal(false)} style={styles.modalBackButton}>
+              <Ionicons name="arrow-back" size={scale(24)} color={theme.colors.text} />
+            </TouchableOpacity>
+            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
+              Crear Nueva Categoría
+            </Text>
+            <View style={{ width: scale(24) }} />
+          </View>
 
+          {/* Contenido scrollable */}
+          <ScrollView
+            style={styles.modalScrollContent}
+            contentContainerStyle={styles.modalScrollInner}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={[styles.modalSubtitle, { color: theme.colors.textSecondary }]}>
               Crea una nueva categoría para la comunidad
             </Text>
@@ -1174,8 +1223,77 @@ const CreateScreen: React.FC = () => {
                 numberOfLines={3}
               />
 
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Icono</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.iconSelector}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Imagen (opcional)</Text>
+              <View style={styles.communityImageSection}>
+                {newCommunityImageUri ? (
+                  <View style={styles.communityImagePreviewContainer}>
+                    <Image
+                      source={{ uri: newCommunityImageUri }}
+                      style={styles.communityImagePreview}
+                    />
+                    <TouchableOpacity
+                      style={styles.communityImageRemoveButton}
+                      onPress={() => setNewCommunityImageUri(null)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="close-circle" size={scale(24)} color="white" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.communityImagePickerButton, {
+                      backgroundColor: theme.colors.surface,
+                      borderColor: theme.colors.border,
+                    }]}
+                    onPress={async () => {
+                      if (Platform.OS === 'web') {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = 'image/*';
+                        input.onchange = (e: any) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const uri = URL.createObjectURL(file);
+                            setNewCommunityImageUri(uri);
+                          }
+                        };
+                        input.click();
+                      } else {
+                        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                        if (!permissionResult.granted) {
+                          Alert.alert('Permisos necesarios', 'Necesitamos acceso a tu galería');
+                          return;
+                        }
+                        const result = await ImagePicker.launchImageLibraryAsync({
+                          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                          allowsEditing: true,
+                          aspect: [1, 1],
+                          quality: 0.8,
+                        });
+                        if (!result.canceled && result.assets[0]) {
+                          setNewCommunityImageUri(result.assets[0].uri);
+                        }
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="image-outline" size={scale(28)} color={theme.colors.textSecondary} />
+                    <Text style={[styles.communityImagePickerText, { color: theme.colors.textSecondary }]}>
+                      Subir imagen
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
+                Icono {newCommunityImageUri ? '(deshabilitado - imagen seleccionada)' : ''}
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={[styles.iconSelector, newCommunityImageUri ? { opacity: 0.4 } : {}]}
+                pointerEvents={newCommunityImageUri ? 'none' : 'auto'}
+              >
                 {['chatbubbles', 'people', 'heart', 'star', 'flash', 'leaf', 'paw', 'car', 'musical-notes', 'camera', 'book', 'game-controller'].map((icon) => (
                   <TouchableOpacity
                     key={icon}
@@ -1215,8 +1333,8 @@ const CreateScreen: React.FC = () => {
                 <Text style={styles.createCommunitySubmitText}>Crear categoría</Text>
               )}
             </TouchableOpacity>
-          </View>
-        </View>
+          </ScrollView>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -1549,27 +1667,31 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.sm,
     fontWeight: FONT_WEIGHT.medium,
   },
-  // Modal estilos
-  modalOverlay: {
+  // Modal estilos (pantalla completa)
+  modalFullScreen: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    borderTopLeftRadius: BORDER_RADIUS.xl,
-    borderTopRightRadius: BORDER_RADIUS.xl,
-    padding: SPACING.xl,
-    maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: scale(0.5),
+  },
+  modalBackButton: {
+    padding: SPACING.xs,
   },
   modalTitle: {
-    fontSize: FONT_SIZE.xl,
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
+  },
+  modalScrollContent: {
+    flex: 1,
+  },
+  modalScrollInner: {
+    padding: SPACING.xl,
+    paddingBottom: SPACING.xl * 2,
   },
   modalSubtitle: {
     fontSize: FONT_SIZE.sm,
@@ -1607,6 +1729,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.sm,
+  },
+  communityImageSection: {
+    marginBottom: SPACING.md,
+  },
+  communityImagePickerButton: {
+    width: scale(80),
+    height: scale(80),
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  communityImagePickerText: {
+    fontSize: FONT_SIZE.xs,
+  },
+  communityImagePreviewContainer: {
+    position: 'relative',
+    width: scale(80),
+    height: scale(80),
+  },
+  communityImagePreview: {
+    width: scale(80),
+    height: scale(80),
+    borderRadius: BORDER_RADIUS.md,
+  },
+  communityImageRemoveButton: {
+    position: 'absolute',
+    top: -scale(8),
+    right: -scale(8),
   },
   createCommunitySubmitButton: {
     paddingVertical: SPACING.md,

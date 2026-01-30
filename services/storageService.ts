@@ -438,6 +438,66 @@ export const uploadPostImage = async (
   }
 };
 
+// Función para subir imagen de comunidad desde URI
+export const uploadCommunityImage = async (
+  imageUri: string,
+  userId: string,
+  onProgress?: (progress: UploadProgress) => void
+): Promise<{ fullSize: string; thumbnail: string }> => {
+  try {
+    console.log('📤 Subiendo imagen de comunidad...');
+
+    // Convertir URI a blob
+    const blob = await uriToBlob(imageUri);
+
+    if (!blob || blob.size === 0) {
+      throw new Error('Blob vacío o inválido');
+    }
+
+    console.log(`📊 Tamaño original: ${(blob.size / 1024).toFixed(1)} KB`);
+
+    // Comprimir imágenes en paralelo: full size y thumbnail
+    const [fullSizeBlob, thumbnailBlob] = await Promise.all([
+      compressPostImage(blob),
+      compressPostThumbnail(blob)
+    ]);
+
+    console.log(`✅ Full size: ${(fullSizeBlob.size / 1024).toFixed(1)} KB`);
+    console.log(`✅ Thumbnail: ${(thumbnailBlob.size / 1024).toFixed(1)} KB`);
+
+    // Generar paths únicos con timestamp
+    const timestamp = Date.now();
+    const fullSizePath = `images/communities/${userId}/${timestamp}.jpg`;
+    const thumbnailPath = `images/communities/${userId}/${timestamp}_thumb.jpg`;
+
+    const metadata = {
+      contentType: 'image/jpeg',
+      customMetadata: {
+        uploadedBy: userId,
+        uploadDate: new Date().toISOString(),
+        folder: 'communities'
+      }
+    };
+
+    // Subir ambas imágenes en paralelo
+    const [fullSizeUrl, thumbnailUrl] = await Promise.all([
+      storageService.uploadFile(fullSizeBlob, fullSizePath, onProgress, metadata),
+      storageService.uploadFile(thumbnailBlob, thumbnailPath, undefined, metadata)
+    ]);
+
+    console.log('✅ Imagen de comunidad subida:', fullSizeUrl);
+    console.log('✅ Thumbnail subido:', thumbnailUrl);
+
+    return {
+      fullSize: fullSizeUrl,
+      thumbnail: thumbnailUrl,
+    };
+  } catch (error) {
+    console.error('Error uploading community image:', error);
+    throw error;
+  }
+};
+
 export const uploadPostVideo = (
   videoFile: Blob | Uint8Array | ArrayBuffer,
   userId: string,

@@ -39,6 +39,14 @@ const LANDING_CATEGORIES = [
     communitySlug: 'noticias',
   },
   {
+    id: 'marketplace',
+    name: 'Marketplace',
+    icon: 'storefront-outline',
+    customIcon: require('../assets/icons/category-marketplace.png'),
+    color: '#D97706',
+    communitySlug: 'marketplace',
+  },
+  {
     id: 'relaciones',
     name: 'Relaciones & Amor',
     icon: 'heart-outline',
@@ -114,6 +122,7 @@ const LANDING_CATEGORIES = [
     id: 'debates',
     name: 'Debates Calientes',
     icon: 'flame-outline',
+    customIcon: require('../assets/icons/category-debates.png'),
     color: '#F97316',
     communitySlug: 'debates-calientes',
   },
@@ -129,6 +138,7 @@ const LANDING_CATEGORIES = [
     id: 'comida',
     name: 'Comida & Cocina',
     icon: 'restaurant-outline',
+    customIcon: require('../assets/icons/category-comida.png'),
     color: '#F472B6',
     communitySlug: 'comida-cocina',
   },
@@ -136,6 +146,7 @@ const LANDING_CATEGORIES = [
     id: 'moda',
     name: 'Moda & Estilo',
     icon: 'shirt-outline',
+    customIcon: require('../assets/icons/category-moda.png'),
     color: '#A855F7',
     communitySlug: 'moda-estilo',
   },
@@ -143,6 +154,7 @@ const LANDING_CATEGORIES = [
     id: 'espiritualidad',
     name: 'Espiritualidad',
     icon: 'sparkles-outline',
+    customIcon: require('../assets/icons/category-espiritualidad.png'),
     color: '#FBBF24',
     communitySlug: 'espiritualidad',
   },
@@ -150,6 +162,7 @@ const LANDING_CATEGORIES = [
     id: 'anime',
     name: 'Anime & Manga',
     icon: 'sparkles-outline',
+    customIcon: require('../assets/icons/category-anime.png'),
     color: '#FF6B9D',
     communitySlug: 'anime-manga',
   },
@@ -157,6 +170,7 @@ const LANDING_CATEGORIES = [
     id: 'cripto',
     name: 'Criptomonedas',
     icon: 'logo-bitcoin',
+    customIcon: require('../assets/icons/category-cripto.png'),
     color: '#F7931A',
     communitySlug: 'criptomonedas',
   },
@@ -164,8 +178,57 @@ const LANDING_CATEGORIES = [
     id: 'kpop',
     name: 'K-Pop & K-Drama',
     icon: 'musical-notes-outline',
+    customIcon: require('../assets/icons/category-kpop.png'),
     color: '#FF2D78',
     communitySlug: 'kpop-kdrama',
+  },
+  {
+    id: 'esoterico',
+    name: 'Esoterico',
+    icon: 'moon-outline',
+    customIcon: require('../assets/icons/category-esoterico.png'),
+    color: '#7C3AED',
+    communitySlug: 'esoterico',
+  },
+  {
+    id: 'accion-poetica',
+    name: 'Accion Poetica',
+    icon: 'pencil-outline',
+    customIcon: require('../assets/icons/category-accion-poetica.png'),
+    color: '#EC4899',
+    communitySlug: 'accion-poetica',
+  },
+  {
+    id: 'ai-tecnologia',
+    name: 'AI & Tecnologia',
+    icon: 'hardware-chip-outline',
+    customIcon: require('../assets/icons/category-ai-tecnologia.png'),
+    color: '#06B6D4',
+    communitySlug: 'ai-tecnologia',
+  },
+  {
+    id: 'eventos',
+    name: 'Eventos & Salidas',
+    icon: 'calendar-outline',
+    customIcon: require('../assets/icons/category-eventos.png'),
+    color: '#F43F5E',
+    communitySlug: 'eventos-salidas',
+  },
+  {
+    id: 'negocios',
+    name: 'Negocios & Inversiones',
+    icon: 'trending-up-outline',
+    customIcon: require('../assets/icons/category-negocios.png'),
+    color: '#059669',
+    communitySlug: 'negocios-inversiones',
+  },
+  {
+    id: 'bares',
+    name: 'Bares & Restaurantes',
+    icon: 'beer-outline',
+    customIcon: require('../assets/icons/category-bares.png'),
+    color: '#B45309',
+    communitySlug: 'bares-restaurantes',
   },
 ];
 
@@ -332,9 +395,6 @@ const LandingScreen: React.FC = () => {
       <Text style={styles.heroSubtitle}>
         Opina. Publica. Conecta.
       </Text>
-      <Text style={styles.heroTagline}>
-        Be free to express
-      </Text>
     </LinearGradient>
   );
 
@@ -343,13 +403,13 @@ const LandingScreen: React.FC = () => {
       <Text style={[styles.categoriesTitle, { color: theme.colors.text }]}>
         Explora por categoria
       </Text>
-      {/* Fila 1: categorías 1-9 */}
+      {/* Fila 1: categorías 1-12 */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.categoriesScrollContent}
       >
-        {LANDING_CATEGORIES.slice(0, 9).map((category) => (
+        {LANDING_CATEGORIES.slice(0, 12).map((category) => (
           <TouchableOpacity
             key={category.id}
             style={[
@@ -385,14 +445,14 @@ const LandingScreen: React.FC = () => {
           </TouchableOpacity>
         ))}
       </ScrollView>
-      {/* Fila 2: categorías 10-17 + crear nueva */}
+      {/* Fila 2: categorías 13-24 + crear nueva */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.categoriesScrollContent}
         style={styles.categoriesSecondRow}
       >
-        {LANDING_CATEGORIES.slice(9).map((category) => (
+        {LANDING_CATEGORIES.slice(12).map((category) => (
           <TouchableOpacity
             key={category.id}
             style={[
@@ -427,32 +487,104 @@ const LandingScreen: React.FC = () => {
             </Text>
           </TouchableOpacity>
         ))}
-        {/* Crear nueva categoría */}
-        <TouchableOpacity
-          style={[
-            styles.categoryItem,
-            { backgroundColor: theme.colors.card, borderColor: theme.colors.accent, borderWidth: 1.5 }
-          ]}
-          onPress={handleCreateCategory}
-          activeOpacity={0.7}
-        >
-          <View style={[
-            styles.categoryIcon,
-            {
-              backgroundColor: theme.colors.accent + '20',
-              borderWidth: 2,
-              borderColor: theme.colors.accent,
-            }
-          ]}>
-            <Ionicons name="add" size={scale(24)} color={theme.colors.accent} />
-          </View>
-          <Text
-            style={[styles.categoryName, { color: theme.colors.accent }]}
-            numberOfLines={2}
-          >
-            Crear nueva
+      </ScrollView>
+    </View>
+  );
+
+  const COMMUNITY_CATEGORIES = [
+    { id: 'beatles', name: 'Los Beatles', icon: 'musical-notes-outline', color: '#3B82F6', members: 4820, communitySlug: 'los-beatles' },
+    { id: 'tarot', name: 'Tarot & Lectura', icon: 'moon-outline', color: '#8B5CF6', members: 3150, communitySlug: 'tarot-lectura' },
+    { id: 'recetas-abuela', name: 'Recetas de la Abuela', icon: 'cafe-outline', color: '#F59E0B', members: 2670, communitySlug: 'recetas-abuela' },
+    { id: 'memes-arg', name: 'Memes Argentinos', icon: 'happy-outline', color: '#F97316', members: 5420, communitySlug: 'memes-argentinos' },
+    { id: 'true-crime', name: 'True Crime Latino', icon: 'skull-outline', color: '#EF4444', members: 1980, communitySlug: 'true-crime-latino' },
+    { id: 'plantas', name: 'Plantitas & Jardin', icon: 'leaf-outline', color: '#10B981', members: 1340, communitySlug: 'plantitas-jardin' },
+    { id: 'rock-nacional', name: 'Rock Nacional', icon: 'radio-outline', color: '#6366F1', members: 3890, communitySlug: 'rock-nacional' },
+    { id: 'cats-lovers', name: 'Cat Lovers', icon: 'paw-outline', color: '#EC4899', members: 4210, communitySlug: 'cat-lovers' },
+  ];
+
+  const [userCreatedCommunities, setUserCreatedCommunities] = useState<Community[]>([]);
+
+  useEffect(() => {
+    const loadUserCommunities = async () => {
+      try {
+        const result = await communityService.getUserCommunities();
+        setUserCreatedCommunities(result);
+      } catch (error) {
+        console.error('Error loading user communities:', error);
+      }
+    };
+    loadUserCommunities();
+  }, []);
+
+  const renderCommunityCategories = () => (
+    <View style={[styles.communityContainer, { backgroundColor: theme.colors.surface }]}>
+      <View style={styles.communityHeader}>
+        <View>
+          <Text style={[styles.categoriesTitle, { color: theme.colors.text }]}>
+            Creadas por la comunidad
           </Text>
+        </View>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('ExploreCommunities' as any)}>
+          <Text style={[styles.communityViewAll, { color: theme.colors.accent }]}>Ver todas</Text>
         </TouchableOpacity>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.communityScrollContent}
+      >
+        {/* Comunidades reales creadas por usuarios */}
+        {userCreatedCommunities.map((cat) => {
+          const color = '#8B5CF6';
+          return (
+            <TouchableOpacity
+              key={cat.id || cat.slug}
+              style={[styles.communityChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+              onPress={() => handleCategoryPress({ communitySlug: cat.slug } as any)}
+              activeOpacity={0.7}
+            >
+              {cat.imageUrl ? (
+                <Image
+                  source={{ uri: cat.imageThumbnailUrl || cat.imageUrl }}
+                  style={styles.communityChipImage}
+                />
+              ) : (
+                <View style={[styles.communityChipIcon, { backgroundColor: color }]}>
+                  <Ionicons name={(cat.icon + '-outline') as any} size={scale(16)} color="white" />
+                </View>
+              )}
+              <View style={styles.communityChipText}>
+                <Text style={[styles.communityChipName, { color: theme.colors.text }]} numberOfLines={1}>
+                  {cat.name}
+                </Text>
+                <Text style={[styles.communityChipMembers, { color: theme.colors.textSecondary }]}>
+                  {cat.memberCount >= 1000 ? (cat.memberCount / 1000).toFixed(1) + 'K' : cat.memberCount} miembros
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+        {/* Comunidades hardcoded de ejemplo */}
+        {COMMUNITY_CATEGORIES.map((cat) => (
+          <TouchableOpacity
+            key={cat.id}
+            style={[styles.communityChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+            onPress={() => handleCategoryPress(cat as any)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.communityChipIcon, { backgroundColor: cat.color }]}>
+              <Ionicons name={cat.icon as any} size={scale(16)} color="white" />
+            </View>
+            <View style={styles.communityChipText}>
+              <Text style={[styles.communityChipName, { color: theme.colors.text }]} numberOfLines={1}>
+                {cat.name}
+              </Text>
+              <Text style={[styles.communityChipMembers, { color: theme.colors.textSecondary }]}>
+                {cat.members >= 1000 ? (cat.members / 1000).toFixed(1) + 'K' : cat.members} miembros
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
     </View>
   );
@@ -569,6 +701,7 @@ const LandingScreen: React.FC = () => {
       >
         {renderHero()}
         {renderCategories()}
+        {renderCommunityCategories()}
         {renderTrendingTopic()}
         {renderFeaturedOpinion()}
         {renderFeed()}
@@ -593,8 +726,8 @@ const styles = StyleSheet.create({
   // Hero
   heroContainer: {
     paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.xxxl,
-    paddingBottom: SPACING.xxl,
+    paddingTop: SPACING.xl,
+    paddingBottom: SPACING.lg,
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
@@ -674,8 +807,8 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   categoryItem: {
-    width: scale(95),
-    height: scale(100),
+    width: scale(94),
+    height: scale(90),
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     justifyContent: 'center',
@@ -683,23 +816,79 @@ const styles = StyleSheet.create({
     padding: SPACING.sm,
   },
   categoryIcon: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: scale(14),
+    width: scale(43),
+    height: scale(43),
+    borderRadius: scale(13),
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: SPACING.sm,
   },
   categoryName: {
-    fontSize: scale(11),
+    fontSize: scale(10),
     fontWeight: FONT_WEIGHT.medium,
     textAlign: 'center',
-    lineHeight: scale(14),
+    lineHeight: scale(13),
   },
   customCategoryIcon: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: scale(14),
+    width: scale(43),
+    height: scale(43),
+    borderRadius: scale(13),
+  },
+
+  // Community Categories
+  communityContainer: {
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.md,
+  },
+  communityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
+  communitySubtitle: {
+    fontSize: scale(12),
+    marginTop: 2,
+  },
+  communityViewAll: {
+    fontSize: scale(13),
+    fontWeight: FONT_WEIGHT.semiBold,
+  },
+  communityScrollContent: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  communityChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.full,
+    borderWidth: 1,
+    gap: SPACING.sm,
+  },
+  communityChipIcon: {
+    width: scale(30),
+    height: scale(30),
+    borderRadius: scale(15),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  communityChipImage: {
+    width: scale(30),
+    height: scale(30),
+    borderRadius: scale(15),
+  },
+  communityChipText: {
+    marginRight: SPACING.xs,
+  },
+  communityChipName: {
+    fontSize: scale(12),
+    fontWeight: FONT_WEIGHT.semiBold,
+  },
+  communityChipMembers: {
+    fontSize: scale(10),
   },
 
   // Trending Topic

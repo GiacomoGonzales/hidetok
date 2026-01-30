@@ -43,6 +43,8 @@ export interface Community {
   // Configuracion especial
   isUnfiltered?: boolean; // Para comunidades como "haters"
   warningMessage?: string; // Mensaje de advertencia al entrar
+  imageUrl?: string; // Imagen personalizada de la comunidad
+  imageThumbnailUrl?: string; // Thumbnail de la imagen
 }
 
 // Tags predefinidos por categoría
@@ -669,6 +671,8 @@ export const communityService = {
     icon: string;
     rules: string[];
     createdBy: string;
+    imageUrl?: string;
+    imageThumbnailUrl?: string;
   }): Promise<string> => {
     try {
       // Generar slug
@@ -703,6 +707,8 @@ export const communityService = {
         moderators: [data.createdBy],
         createdBy: data.createdBy,
         status: 'active', // Categorías creadas por usuarios quedan activas inmediatamente
+        ...(data.imageUrl && { imageUrl: data.imageUrl }),
+        ...(data.imageThumbnailUrl && { imageThumbnailUrl: data.imageThumbnailUrl }),
       };
 
       const docRef = await addDoc(collection(db, 'communities'), communityData);

@@ -245,15 +245,27 @@ const PostCard: React.FC<PostCardProps> = ({
     }
   }, [isRepost, originalPost, post.imageUrls]);
 
+  const navigateToRegister = () => {
+    try {
+      const parentNav = navigation.getParent();
+      const mainNav = parentNav?.getParent();
+      if (mainNav) {
+        (mainNav as any).navigate('Register');
+      }
+    } catch (e) {
+      // fallback silencioso
+    }
+  };
+
   // Manejar voto de acuerdo
   const handleVoteAgree = async () => {
-    if (!user) return;
+    if (!user) { navigateToRegister(); return; }
     await voteAgree();
   };
 
   // Manejar voto en desacuerdo
   const handleVoteDisagree = async () => {
-    if (!user) return;
+    if (!user) { navigateToRegister(); return; }
     await voteDisagree();
   };
 
@@ -968,7 +980,7 @@ const PostCard: React.FC<PostCardProps> = ({
         {/* Comentarios */}
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => onComment(post.id!)}
+          onPress={() => { if (!user) { navigateToRegister(); return; } onComment(post.id!); }}
           activeOpacity={0.7}
         >
           <Ionicons
@@ -984,7 +996,7 @@ const PostCard: React.FC<PostCardProps> = ({
         {/* Repost */}
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={toggleRepost}
+          onPress={() => { if (!user) { navigateToRegister(); return; } toggleRepost(); }}
           disabled={isReposting}
           activeOpacity={0.7}
         >
@@ -1004,12 +1016,12 @@ const PostCard: React.FC<PostCardProps> = ({
         {!isOwnPost && postAuthor && (
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => onPrivateMessage(displayPost.userId, {
+            onPress={() => { if (!user) { navigateToRegister(); return; } onPrivateMessage(displayPost.userId, {
               displayName: postAuthor.displayName || 'Usuario',
               avatarType: postAuthor.avatarType,
               avatarId: postAuthor.avatarId,
               photoURL: typeof postAuthor.photoURL === 'string' ? postAuthor.photoURL : undefined,
-            })}
+            }); }}
             activeOpacity={0.7}
           >
             <Ionicons
