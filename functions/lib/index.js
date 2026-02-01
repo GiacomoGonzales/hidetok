@@ -1,13 +1,18 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendMessagePushNotification = exports.sendPushNotification = void 0;
-const functions = require("firebase-functions");
+exports.sendMessagePushNotification = exports.sendPushNotification = exports.faceSwap = exports.generateAvatarFullBody = exports.generateAvatarPortrait = void 0;
+const firestore_1 = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 // Inicializar Firebase Admin solo si no está inicializado
 if (admin.apps.length === 0) {
     admin.initializeApp();
 }
 const db = admin.firestore();
+// Re-export avatar generation functions
+var generateAvatar_1 = require("./generateAvatar");
+Object.defineProperty(exports, "generateAvatarPortrait", { enumerable: true, get: function () { return generateAvatar_1.generateAvatarPortrait; } });
+Object.defineProperty(exports, "generateAvatarFullBody", { enumerable: true, get: function () { return generateAvatar_1.generateAvatarFullBody; } });
+Object.defineProperty(exports, "faceSwap", { enumerable: true, get: function () { return generateAvatar_1.faceSwap; } });
 // Tipos de notificación y sus mensajes
 const notificationMessages = {
     like: (senderName) => ({
@@ -79,15 +84,14 @@ async function sendExpoPush(pushToken, title, body, data) {
     }
 }
 // Cloud Function que se dispara cuando se crea una notificación
-exports.sendPushNotification = functions
-    .region('us-central1')
-    .firestore.document('notifications/{notificationId}')
-    .onCreate(async (snapshot, context) => {
+exports.sendPushNotification = (0, firestore_1.onDocumentCreated)({ document: 'notifications/{notificationId}', region: 'us-central1' }, async (event) => {
     var _a, _b;
+    const snapshot = event.data;
+    if (!snapshot)
+        return null;
     const notification = snapshot.data();
     const { recipientId, senderId, senderName, type, postId, commentId, conversationId } = notification;
     try {
-        // Obtener el push token del destinatario
         const recipientDoc = await db.collection('users').doc(recipientId).get();
         if (!recipientDoc.exists) {
             console.log('Usuario destinatario no encontrado');
@@ -99,7 +103,6 @@ exports.sendPushNotification = functions
             console.log('El usuario no tiene push token registrado');
             return null;
         }
-        // Obtener el mensaje según el tipo de notificación
         const messageGenerator = notificationMessages[type];
         if (!messageGenerator) {
             console.log('Tipo de notificación no soportado:', type);
@@ -112,7 +115,7 @@ exports.sendPushNotification = functions
             commentId: commentId || null,
             senderId: senderId || null,
             conversationId: conversationId || null,
-            notificationId: context.params.notificationId,
+            notificationId: event.params.notificationId,
         };
         const result = await sendExpoPush(pushToken, title, body, data);
         if (((_a = result === null || result === void 0 ? void 0 : result.data) === null || _a === void 0 ? void 0 : _a.status) === 'error') {
@@ -133,26 +136,23 @@ exports.sendPushNotification = functions
     }
 });
 // Cloud Function para enviar push de nuevos mensajes
-exports.sendMessagePushNotification = functions
-    .region('us-central1')
-    .firestore.document('conversations/{conversationId}/messages/{messageId}')
-    .onCreate(async (snapshot, context) => {
+exports.sendMessagePushNotification = (0, firestore_1.onDocumentCreated)({ document: 'conversations/{conversationId}/messages/{messageId}', region: 'us-central1' }, async (event) => {
+    const snapshot = event.data;
+    if (!snapshot)
+        return null;
     const messageData = snapshot.data();
     const { senderId, content } = messageData;
-    const { conversationId } = context.params;
+    const { conversationId } = event.params;
     try {
-        // Obtener la conversación para saber los participantes
         const conversationDoc = await db.collection('conversations').doc(conversationId).get();
         if (!conversationDoc.exists) {
             return null;
         }
         const conversationData = conversationDoc.data();
         const participants = (conversationData === null || conversationData === void 0 ? void 0 : conversationData.participants) || [];
-        // Obtener datos del sender
         const senderDoc = await db.collection('users').doc(senderId).get();
         const senderData = senderDoc.data();
         const senderName = (senderData === null || senderData === void 0 ? void 0 : senderData.displayName) || 'Alguien';
-        // Enviar push a todos los participantes excepto al sender
         for (const participantId of participants) {
             if (participantId === senderId)
                 continue;

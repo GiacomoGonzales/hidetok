@@ -103,6 +103,23 @@ export interface UserProfile {
   // === HIDI: Sistema de doble identidad ===
   profileType?: 'real' | 'hidi'; // Tipo de perfil
   linkedAccountId?: string; // uid del perfil vinculado (real↔hidi)
+
+  // === Avatar IA ===
+  aiAvatarPortraitUrl?: string;
+  aiAvatarFullBodyUrl?: string;
+  aiAvatarSelections?: {
+    gender: string;
+    skinTone: string;
+    hairStyle: string;
+    ageRange: string;
+    eyeColor: string;
+    faceShape: string;
+    facialHair: string;
+    accessories: string;
+    expression: string;
+    background: string;
+    photoStyle: string;
+  };
 }
 
 export interface Comment {

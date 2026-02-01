@@ -586,6 +586,8 @@ const ProfileScreen: React.FC = () => {
                   currentAvatarId={userProfile.avatarId}
                   onAvatarSelect={handleAvatarSelect}
                   size={100}
+                  isHidiProfile={activeProfileType === 'hidi'}
+                  onNavigateAiAvatar={() => (navigation as any).navigate('AiAvatar')}
                 />
               )}
             </TouchableOpacity>

@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 
 // Inicializar Firebase Admin solo si no está inicializado
@@ -7,6 +7,9 @@ if (admin.apps.length === 0) {
 }
 
 const db = admin.firestore();
+
+// Re-export avatar generation functions
+export { generateAvatarPortrait, generateAvatarFullBody, faceSwap } from './generateAvatar';
 
 // Tipos de notificación y sus mensajes
 const notificationMessages: Record<string, (senderName: string) => { title: string; body: string }> = {
@@ -84,15 +87,16 @@ async function sendExpoPush(pushToken: string, title: string, body: string, data
 }
 
 // Cloud Function que se dispara cuando se crea una notificación
-export const sendPushNotification = functions
-  .region('us-central1')
-  .firestore.document('notifications/{notificationId}')
-  .onCreate(async (snapshot: any, context: any) => {
+export const sendPushNotification = onDocumentCreated(
+  { document: 'notifications/{notificationId}', region: 'us-central1' },
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return null;
+
     const notification = snapshot.data();
     const { recipientId, senderId, senderName, type, postId, commentId, conversationId } = notification;
 
     try {
-      // Obtener el push token del destinatario
       const recipientDoc = await db.collection('users').doc(recipientId).get();
 
       if (!recipientDoc.exists) {
@@ -108,7 +112,6 @@ export const sendPushNotification = functions
         return null;
       }
 
-      // Obtener el mensaje según el tipo de notificación
       const messageGenerator = notificationMessages[type];
       if (!messageGenerator) {
         console.log('Tipo de notificación no soportado:', type);
@@ -123,7 +126,7 @@ export const sendPushNotification = functions
         commentId: commentId || null,
         senderId: senderId || null,
         conversationId: conversationId || null,
-        notificationId: context.params.notificationId,
+        notificationId: event.params.notificationId,
       };
 
       const result = await sendExpoPush(pushToken, title, body, data);
@@ -145,19 +148,21 @@ export const sendPushNotification = functions
       console.error('Error en sendPushNotification:', error);
       return { success: false, error };
     }
-  });
+  }
+);
 
 // Cloud Function para enviar push de nuevos mensajes
-export const sendMessagePushNotification = functions
-  .region('us-central1')
-  .firestore.document('conversations/{conversationId}/messages/{messageId}')
-  .onCreate(async (snapshot: any, context: any) => {
+export const sendMessagePushNotification = onDocumentCreated(
+  { document: 'conversations/{conversationId}/messages/{messageId}', region: 'us-central1' },
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return null;
+
     const messageData = snapshot.data();
     const { senderId, content } = messageData;
-    const { conversationId } = context.params;
+    const { conversationId } = event.params;
 
     try {
-      // Obtener la conversación para saber los participantes
       const conversationDoc = await db.collection('conversations').doc(conversationId).get();
 
       if (!conversationDoc.exists) {
@@ -167,12 +172,10 @@ export const sendMessagePushNotification = functions
       const conversationData = conversationDoc.data();
       const participants = conversationData?.participants || [];
 
-      // Obtener datos del sender
       const senderDoc = await db.collection('users').doc(senderId).get();
       const senderData = senderDoc.data();
       const senderName = senderData?.displayName || 'Alguien';
 
-      // Enviar push a todos los participantes excepto al sender
       for (const participantId of participants) {
         if (participantId === senderId) continue;
 
@@ -196,4 +199,5 @@ export const sendMessagePushNotification = functions
       console.error('Error en sendMessagePushNotification:', error);
       return { success: false, error };
     }
-  });
+  }
+);

@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getFunctions } from 'firebase/functions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
@@ -60,6 +61,7 @@ let app: any = null;
 let auth: any = null;
 let db: any = null;
 let storage: any = null;
+let functions: any = null;
 
 try {
   console.log('🚀 Initializing Firebase app...');
@@ -86,6 +88,9 @@ try {
   storage = getStorage(app);
   console.log('✅ Firebase Storage initialized');
 
+  functions = getFunctions(app, 'us-central1');
+  console.log('✅ Firebase Functions initialized');
+
 } catch (error) {
   console.error('❌ Error initializing Firebase:', error);
 
@@ -93,10 +98,11 @@ try {
   auth = null;
   db = null;
   storage = null;
+  functions = null;
 }
 
 // Exportar servicios
-export { auth, db, storage };
+export { auth, db, storage, functions };
 
 // Exportar la app por si se necesita en otro lugar
 export default app;

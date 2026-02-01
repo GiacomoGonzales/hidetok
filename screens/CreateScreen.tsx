@@ -19,6 +19,7 @@ import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { postsService } from '../services/firestoreService';
 import { uploadPostImage, uploadPostVideo } from '../services/storageService';
+import { performFaceSwap, uploadImageForSwap, saveFaceSwapResult } from '../services/avatarGenerationService';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
@@ -55,6 +56,59 @@ const CreateScreen: React.FC = () => {
   const [isPublishing, setIsPublishing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const [poll, setPoll] = useState<Poll | null>(null);
+
+  const [faceSwapLoading, setFaceSwapLoading] = useState(false);
+
+  const hasAvatar = !!userProfile?.aiAvatarPortraitUrl;
+
+  const takePhotoWithFaceSwap = async (fromCamera: boolean) => {
+    if (!user?.uid || !userProfile?.aiAvatarPortraitUrl) return;
+
+    let result;
+    if (fromCamera) {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permiso requerido', 'Necesitamos acceso a la cámara.');
+        return;
+      }
+      result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+        allowsEditing: true,
+      });
+    } else {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permiso requerido', 'Necesitamos acceso a la galería.');
+        return;
+      }
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+        allowsEditing: true,
+      });
+    }
+
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+
+    setFaceSwapLoading(true);
+    try {
+      const uploadedUrl = await uploadImageForSwap(user.uid, result.assets[0].uri);
+      const swappedUrl = await performFaceSwap(uploadedUrl, userProfile.aiAvatarPortraitUrl);
+      const savedUrl = await saveFaceSwapResult(user.uid, swappedUrl);
+
+      setAttachedMedia(prev => [...prev, {
+        id: `faceswap_${Date.now()}`,
+        type: 'image' as const,
+        uri: savedUrl,
+      }]);
+    } catch (error: any) {
+      console.error('Error face swap:', error);
+      Alert.alert('Error', 'No se pudo aplicar el face swap. Intenta de nuevo.');
+    } finally {
+      setFaceSwapLoading(false);
+    }
+  };
 
   const maxTextLength = 500;
   const maxImages = 4;
@@ -682,6 +736,29 @@ const CreateScreen: React.FC = () => {
           </TouchableOpacity>
         )}
 
+        {/* Botón de Face Swap - solo si tiene avatar */}
+        {hasAvatar && Platform.OS !== 'web' && (
+          <TouchableOpacity
+            style={styles.toolbarButton}
+            onPress={() => {
+              if (attachedMedia.length >= maxImages || poll !== null) return;
+              Alert.alert('Face Swap', 'Toma o sube una foto y se aplicará tu avatar', [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Cámara', onPress: () => takePhotoWithFaceSwap(true) },
+                { text: 'Galería', onPress: () => takePhotoWithFaceSwap(false) },
+              ]);
+            }}
+            disabled={attachedMedia.length >= maxImages || poll !== null}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="person-circle-outline"
+              size={scale(22)}
+              color={(attachedMedia.length >= maxImages || poll !== null) ? theme.colors.textSecondary : theme.colors.accent}
+            />
+          </TouchableOpacity>
+        )}
+
         {/* Botón de encuesta */}
         <TouchableOpacity
           style={styles.toolbarButton}
@@ -813,6 +890,18 @@ const CreateScreen: React.FC = () => {
           {renderToolbar()}
         </View>
       </KeyboardAvoidingView>
+
+      {/* Face swap loading overlay */}
+      {faceSwapLoading && (
+        <View style={styles.faceSwapOverlay}>
+          <View style={[styles.faceSwapLoadingBox, { backgroundColor: theme.colors.surface }]}>
+            <ActivityIndicator size="large" color={theme.colors.accent} />
+            <Text style={[styles.faceSwapLoadingText, { color: theme.colors.text }]}>
+              Aplicando face swap...{'\n'}Puede tardar hasta 2 min la primera vez
+            </Text>
+          </View>
+        </View>
+      )}
 
     </SafeAreaView>
   );
@@ -1039,6 +1128,24 @@ const styles = StyleSheet.create({
   pollDurationButtonText: {
     fontSize: FONT_SIZE.sm,
     fontWeight: FONT_WEIGHT.medium,
+  },
+  faceSwapOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  faceSwapLoadingBox: {
+    padding: SPACING.xxl,
+    borderRadius: BORDER_RADIUS.lg,
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  faceSwapLoadingText: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
+    textAlign: 'center',
   },
 });
 

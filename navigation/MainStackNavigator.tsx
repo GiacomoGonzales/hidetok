@@ -16,6 +16,7 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import HidiCreationScreen from '../screens/HidiCreationScreen';
+import AiAvatarScreen from '../screens/AiAvatarScreen';
 import AuthStackNavigator from './AuthStackNavigator';
 import Sidebar from '../components/Sidebar';
 import RightSidebar from '../components/RightSidebar';
@@ -37,6 +38,7 @@ export type MainStackParamList = {
     communityId: string;
   };
   HidiCreation: undefined;
+  AiAvatar: undefined;
   Auth: {
     screen?: 'Login' | 'Register';
   } | undefined;
@@ -235,6 +237,14 @@ const MainStackNavigator: React.FC = () => {
       <Stack.Screen
         name="HidiCreation"
         component={HidiCreationScreen}
+        options={{
+          presentation: 'card',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="AiAvatar"
+        component={AiAvatarScreen}
         options={{
           presentation: 'card',
           headerShown: false,

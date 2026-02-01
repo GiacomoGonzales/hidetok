@@ -52,6 +52,8 @@ interface AvatarPickerProps {
     avatarId?: string;
   }) => void;
   size?: number;
+  isHidiProfile?: boolean;
+  onNavigateAiAvatar?: () => void;
 }
 
 const AvatarPicker: React.FC<AvatarPickerProps> = ({
@@ -60,6 +62,8 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
   currentAvatarId = 'male',
   onAvatarSelect,
   size = 80,
+  isHidiProfile = false,
+  onNavigateAiAvatar,
 }) => {
   const { theme } = useTheme();
   const { isDesktop } = useResponsive();
@@ -301,6 +305,34 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({
               style={[styles.modalBody, isDesktop && styles.desktopModalBody]}
               showsVerticalScrollIndicator={false}
             >
+              {/* AI Human Avatar - only for HIDI profiles */}
+              {isHidiProfile && onNavigateAiAvatar && (
+                <View style={styles.section}>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                    Avatar Humano IA
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.aiAvatarCard, { backgroundColor: theme.colors.surface }]}
+                    onPress={() => {
+                      setShowPicker(false);
+                      onNavigateAiAvatar();
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="sparkles" size={24} color={theme.colors.accent} />
+                    <View style={styles.aiAvatarCardContent}>
+                      <Text style={[styles.aiAvatarCardTitle, { color: theme.colors.text }]}>
+                        Crear mi avatar humano
+                      </Text>
+                      <Text style={[styles.aiAvatarCardSubtitle, { color: theme.colors.textSecondary }]}>
+                        Genera un rostro ficticio con IA
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {/* Opciones de cámara / galería */}
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
@@ -526,6 +558,24 @@ const styles = StyleSheet.create({
   dicebearPreview: {
     width: '100%',
     height: '100%',
+  },
+  aiAvatarCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 12,
+  },
+  aiAvatarCardContent: {
+    flex: 1,
+  },
+  aiAvatarCardTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  aiAvatarCardSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
   },
   uploadingContainer: {
     alignItems: 'center',
