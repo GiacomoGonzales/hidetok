@@ -1,266 +1,301 @@
+/**
+ * Avatar Generation Cloud Functions
+ *
+ * Professional implementation using Vertex AI:
+ * - Gemini 1.5 Pro for scene analysis
+ * - Imagen 3 for avatar generation
+ * - Imagen 3 Edit for person replacement
+ */
+
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import {
+  analyzeSceneWithGemini,
+  generateAvatarWithImagen,
+  replacePersonWithAvatar,
+  urlToBase64,
+  type AvatarConfig,
+} from './vertexAI';
 
-const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
-const WAVESPEED_API_KEY = process.env.WAVESPEED_API_KEY;
+// ============================================
+// CLOUD FUNCTION: Generate Avatar with Vertex AI
+// ============================================
 
-interface PredictionResponse {
-  id: string;
-  status: 'starting' | 'processing' | 'succeeded' | 'failed' | 'canceled';
-  output?: string | string[];
-  error?: string;
-  urls?: { get: string };
-}
+/**
+ * Generates a photorealistic avatar using Vertex AI Imagen 3
+ *
+ * Input: Avatar configuration (gender, skin tone, hair, etc.)
+ * Output: Base64 data URL of generated avatar
+ */
+export const generateAvatarWithGemini = onCall(
+  {
+    region: 'us-central1',
+    timeoutSeconds: 120,
+    memory: '512MiB',
+  },
+  async (request) => {
+    // Validate authentication
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Must be authenticated');
+    }
 
-async function callReplicate(
-  prompt: string,
-  aspectRatio: string
-): Promise<string> {
-  const apiToken = REPLICATE_API_TOKEN;
-  if (!apiToken) {
-    throw new HttpsError('failed-precondition', 'Replicate API token not configured');
+    const { prompt, selections } = request.data;
+
+    // Support both legacy prompt and new selections format
+    let avatarConfig: AvatarConfig;
+
+    if (selections) {
+      avatarConfig = {
+        gender: selections.gender || 'male',
+        skinTone: mapSkinTone(selections.skinTone),
+        hairStyle: mapHairStyle(selections.hairStyle),
+        ageRange: mapAgeRange(selections.ageRange),
+        eyeColor: mapEyeColor(selections.eyeColor),
+        faceShape: mapFaceShape(selections.faceShape),
+        facialHair: mapFacialHair(selections.facialHair),
+        accessories: mapAccessories(selections.accessories),
+        expression: mapExpression(selections.expression),
+      };
+    } else if (prompt) {
+      // Legacy: parse from prompt string
+      avatarConfig = parsePromptToConfig(prompt);
+    } else {
+      throw new HttpsError('invalid-argument', 'Either prompt or selections required');
+    }
+
+    console.log('Generating avatar with Vertex AI...');
+    console.log('Config:', JSON.stringify(avatarConfig));
+    const startTime = Date.now();
+
+    try {
+      const imageDataUrl = await generateAvatarWithImagen(avatarConfig);
+
+      const totalTime = Date.now() - startTime;
+      console.log(`Avatar generated in ${totalTime}ms`);
+
+      return { imageUrl: imageDataUrl };
+    } catch (error: any) {
+      console.error('Avatar generation failed:', error);
+      throw new HttpsError('internal', `Avatar generation failed: ${error.message}`);
+    }
   }
+);
 
-  const makeRequest = async (): Promise<Response> => {
-    const maxRetries = 3;
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const res = await fetch(
-        'https://api.replicate.com/v1/models/black-forest-labs/flux-1.1-pro/predictions',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiToken}`,
-            'Content-Type': 'application/json',
-            Prefer: 'wait',
-          },
-          body: JSON.stringify({
-            input: {
-              prompt,
-              aspect_ratio: aspectRatio,
-              output_format: 'webp',
-              output_quality: 90,
-              safety_tolerance: 2,
-              prompt_upsampling: true,
-            },
-          }),
-        }
+// ============================================
+// CLOUD FUNCTION: Avatar Replacement with Vertex AI
+// ============================================
+
+/**
+ * Replaces a person in a photo with the user's avatar
+ *
+ * Pipeline:
+ * 1. Analyze selfie with Gemini 1.5 Pro → JSON (pose, lighting, objects)
+ * 2. Replace person using Imagen 3 Edit with avatar reference
+ *
+ * Input: selfieUrl, avatarUrl
+ * Output: Base64 data URL of result
+ */
+export const avatarReplacement = onCall(
+  {
+    region: 'us-central1',
+    timeoutSeconds: 300,
+    memory: '1GiB',
+  },
+  async (request) => {
+    // Validate authentication
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Must be authenticated');
+    }
+
+    const { selfieUrl, avatarUrl, avatarSelections } = request.data;
+
+    if (!selfieUrl || typeof selfieUrl !== 'string') {
+      throw new HttpsError('invalid-argument', 'selfieUrl is required');
+    }
+    if (!avatarUrl || typeof avatarUrl !== 'string') {
+      throw new HttpsError('invalid-argument', 'avatarUrl is required');
+    }
+
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('     VERTEX AI AVATAR REPLACEMENT (Professional)           ');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('Selfie URL:', selfieUrl.substring(0, 80) + '...');
+    console.log('Avatar URL:', avatarUrl.substring(0, 80) + '...');
+    const startTime = Date.now();
+
+    try {
+      // Step 1: Download images
+      console.log('\n[1/3] Downloading images...');
+      const [selfieData, avatarData] = await Promise.all([
+        urlToBase64(selfieUrl),
+        urlToBase64(avatarUrl),
+      ]);
+      console.log('    ✓ Images downloaded');
+
+      // Step 2: Analyze scene with Gemini 1.5 Pro
+      console.log('\n[2/3] Analyzing scene with Gemini 1.5 Pro...');
+      const sceneAnalysis = await analyzeSceneWithGemini(
+        selfieData.base64,
+        selfieData.mimeType
       );
-      if (res.status === 429) {
-        const retryAfter = parseInt(res.headers.get('retry-after') || '15', 10);
-        console.log(`Rate limited, retrying in ${retryAfter}s (attempt ${attempt + 1})`);
-        await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
-        continue;
-      }
-      return res;
+      console.log('    ✓ Scene analyzed:', JSON.stringify(sceneAnalysis, null, 2).substring(0, 200));
+
+      // Get avatar config from selections or use defaults
+      const avatarConfig: AvatarConfig = avatarSelections ? {
+        gender: avatarSelections.gender || 'male',
+        skinTone: mapSkinTone(avatarSelections.skinTone),
+        hairStyle: mapHairStyle(avatarSelections.hairStyle),
+        ageRange: mapAgeRange(avatarSelections.ageRange),
+        eyeColor: mapEyeColor(avatarSelections.eyeColor),
+        faceShape: mapFaceShape(avatarSelections.faceShape),
+        facialHair: mapFacialHair(avatarSelections.facialHair),
+        accessories: mapAccessories(avatarSelections.accessories),
+        expression: mapExpression(avatarSelections.expression),
+      } : {
+        gender: 'male',
+        skinTone: 'medium skin',
+        hairStyle: 'short hair',
+        ageRange: 'adult in their 30s',
+        eyeColor: 'brown eyes',
+        faceShape: 'oval face',
+        expression: 'natural expression',
+      };
+
+      // Step 3: Replace person with Imagen 3
+      console.log('\n[3/3] Replacing person with Vertex AI...');
+      const resultImageUrl = await replacePersonWithAvatar(
+        selfieData.base64,
+        selfieData.mimeType,
+        avatarData.base64,
+        avatarData.mimeType,
+        sceneAnalysis,
+        avatarConfig
+      );
+      console.log('    ✓ Person replaced');
+
+      const totalTime = Date.now() - startTime;
+      console.log(`\n✓ Avatar replacement completed in ${totalTime}ms`);
+
+      return { imageUrl: resultImageUrl };
+    } catch (error: any) {
+      console.error('Avatar replacement failed:', error);
+      throw new HttpsError('internal', `Avatar replacement failed: ${error.message}`);
     }
-    throw new HttpsError('resource-exhausted', 'Rate limited by image generation API');
+  }
+);
+
+// ============================================
+// MAPPING FUNCTIONS
+// ============================================
+
+function mapSkinTone(tone: string): string {
+  const map: Record<string, string> = {
+    tone1: 'very light/pale skin',
+    tone2: 'light skin',
+    tone3: 'medium skin',
+    tone4: 'olive/tan skin',
+    tone5: 'brown skin',
+    tone6: 'dark brown skin',
   };
-
-  const createResponse = await makeRequest();
-
-  if (!createResponse.ok) {
-    const errorBody = await createResponse.text();
-    console.error('Replicate create error:', errorBody);
-    throw new HttpsError('internal', 'Failed to create prediction');
-  }
-
-  const prediction: PredictionResponse = await createResponse.json();
-  const getUrl = prediction.urls?.get;
-
-  if (!getUrl) {
-    throw new HttpsError('internal', 'No polling URL returned from Replicate');
-  }
-
-  // Poll for result (max 60s, every 2s)
-  const maxAttempts = 30;
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    const pollResponse = await fetch(getUrl, {
-      headers: { Authorization: `Bearer ${apiToken}` },
-    });
-
-    if (!pollResponse.ok) {
-      console.error('Replicate poll error:', await pollResponse.text());
-      continue;
-    }
-
-    const result: PredictionResponse = await pollResponse.json();
-
-    if (result.status === 'succeeded') {
-      const output = Array.isArray(result.output)
-        ? result.output[0]
-        : result.output;
-      if (!output) {
-        throw new HttpsError('internal', 'Prediction succeeded but no output URL');
-      }
-      return output;
-    }
-
-    if (result.status === 'failed' || result.status === 'canceled') {
-      throw new HttpsError('internal', result.error || 'Prediction failed');
-    }
-  }
-
-  throw new HttpsError('deadline-exceeded', 'Avatar generation timed out');
+  return map[tone] || 'medium skin';
 }
 
-export const generateAvatarPortrait = onCall(
-  { region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Must be authenticated');
-    }
+function mapHairStyle(style: string): string {
+  const map: Record<string, string> = {
+    short: 'short cropped hair',
+    medium: 'medium-length hair',
+    long: 'long flowing hair',
+    curly: 'curly textured hair',
+    wavy: 'wavy hair',
+    bald: 'bald/shaved head',
+  };
+  return map[style] || 'short hair';
+}
 
-    const { prompt } = request.data;
-    if (!prompt || typeof prompt !== 'string') {
-      throw new HttpsError('invalid-argument', 'prompt is required');
-    }
+function mapAgeRange(age: string): string {
+  const map: Record<string, string> = {
+    young: 'young adult in their early 20s',
+    adult: 'adult in their 30s-40s',
+    senior: 'mature adult in their 50s-60s',
+  };
+  return map[age] || 'adult';
+}
 
-    const imageUrl = await callReplicate(prompt, '1:1');
-    return { imageUrl };
-  }
-);
+function mapEyeColor(color: string): string {
+  const map: Record<string, string> = {
+    brown: 'warm brown eyes',
+    blue: 'bright blue eyes',
+    green: 'green eyes',
+    hazel: 'hazel eyes',
+    black: 'dark brown/black eyes',
+    gray: 'gray eyes',
+  };
+  return map[color] || 'brown eyes';
+}
 
-export const generateAvatarFullBody = onCall(
-  { region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Must be authenticated');
-    }
+function mapFaceShape(shape: string): string {
+  const map: Record<string, string> = {
+    oval: 'oval face shape',
+    round: 'round face shape',
+    angular: 'angular/chiseled face',
+    long: 'elongated face',
+    square: 'square jaw face',
+  };
+  return map[shape] || 'oval face';
+}
 
-    const { prompt } = request.data;
-    if (!prompt || typeof prompt !== 'string') {
-      throw new HttpsError('invalid-argument', 'prompt is required');
-    }
+function mapFacialHair(hair: string): string {
+  const map: Record<string, string> = {
+    none: '',
+    stubble: 'light stubble',
+    full_beard: 'full beard',
+    mustache: 'mustache',
+    goatee: 'goatee',
+  };
+  return map[hair] || '';
+}
 
-    const imageUrl = await callReplicate(prompt, '2:3');
-    return { imageUrl };
-  }
-);
+function mapAccessories(acc: string): string {
+  const map: Record<string, string> = {
+    none: '',
+    glasses: 'wearing glasses',
+    sunglasses: 'wearing sunglasses',
+    earrings: 'wearing earrings',
+    cap: 'wearing a cap',
+    headscarf: 'wearing a headscarf',
+    piercing: 'with facial piercings',
+  };
+  return map[acc] || '';
+}
 
-// --- Head Swap (WaveSpeedAI) ---
-// Replaces entire head (face + hair + outline) while keeping body/background
+function mapExpression(exp: string): string {
+  const map: Record<string, string> = {
+    smile: 'warm genuine smile',
+    serious: 'serious confident look',
+    relaxed: 'relaxed calm expression',
+    confident: 'confident smirk',
+    mysterious: 'mysterious gaze',
+  };
+  return map[exp] || 'natural expression';
+}
 
-interface WaveSpeedResponse {
-  code: number;
-  message: string;
-  data: {
-    id: string;
-    status: 'created' | 'processing' | 'completed' | 'failed';
-    outputs: string[];
-    urls?: { get: string };
-    error?: string;
+/**
+ * Parses a legacy prompt string into avatar config
+ */
+function parsePromptToConfig(prompt: string): AvatarConfig {
+  const lower = prompt.toLowerCase();
+
+  return {
+    gender: lower.includes('female') ? 'female' : lower.includes('male') ? 'male' : 'person',
+    skinTone: 'medium skin',
+    hairStyle: lower.includes('long hair') ? 'long hair' :
+               lower.includes('curly') ? 'curly hair' :
+               lower.includes('bald') ? 'bald' : 'short hair',
+    ageRange: lower.includes('young') ? 'young adult in their 20s' :
+              lower.includes('senior') || lower.includes('50') ? 'mature adult' : 'adult in their 30s',
+    eyeColor: lower.includes('blue eye') ? 'blue eyes' :
+              lower.includes('green eye') ? 'green eyes' : 'brown eyes',
+    faceShape: 'oval face',
+    expression: lower.includes('smile') ? 'warm smile' :
+                lower.includes('serious') ? 'serious look' : 'natural expression',
   };
 }
-
-async function callWaveSpeedHeadSwap(
-  sourceImageUrl: string,
-  avatarFaceUrl: string
-): Promise<string> {
-  const apiKey = WAVESPEED_API_KEY;
-  if (!apiKey) {
-    throw new HttpsError('failed-precondition', 'WaveSpeed API key not configured');
-  }
-
-  console.log('Head swap input:', JSON.stringify({
-    image: sourceImageUrl.substring(0, 80),
-    face_image: avatarFaceUrl.substring(0, 80),
-  }));
-
-  // Try sync mode first (waits for result)
-  const createResponse = await fetch(
-    'https://api.wavespeed.ai/api/v3/wavespeed-ai/image-head-swap',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        image: sourceImageUrl,
-        face_image: avatarFaceUrl,
-        output_format: 'webp',
-        enable_sync_mode: true,
-      }),
-    }
-  );
-
-  if (!createResponse.ok) {
-    const errorBody = await createResponse.text();
-    console.error('WaveSpeed create error:', createResponse.status, errorBody);
-    throw new HttpsError('internal', 'Failed to create head swap request');
-  }
-
-  const result: WaveSpeedResponse = await createResponse.json();
-  console.log('WaveSpeed response:', result.data?.id, 'status:', result.data?.status);
-
-  // Sync mode: result should be ready
-  if (result.data?.status === 'completed' && result.data.outputs?.length > 0) {
-    console.log('Head swap completed (sync)');
-    return result.data.outputs[0];
-  }
-
-  // If not completed yet, poll
-  const getUrl = result.data?.urls?.get;
-  if (!getUrl) {
-    // Try constructing the polling URL from the task ID
-    if (!result.data?.id) {
-      console.error('No task ID or polling URL:', JSON.stringify(result));
-      throw new HttpsError('internal', 'No polling URL returned from WaveSpeed');
-    }
-  }
-
-  const pollUrl = getUrl || `https://api.wavespeed.ai/api/v3/predictions/${result.data.id}/result`;
-
-  // Poll for result (max 90s, every 2s)
-  const maxAttempts = 45;
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    const pollResponse = await fetch(pollUrl, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-
-    if (!pollResponse.ok) {
-      console.log(`Poll attempt ${i + 1} failed: ${pollResponse.status}`);
-      continue;
-    }
-
-    const pollResult: WaveSpeedResponse = await pollResponse.json();
-    if (i % 5 === 0) {
-      console.log(`Poll attempt ${i + 1}: status=${pollResult.data?.status}`);
-    }
-
-    if (pollResult.data?.status === 'completed' && pollResult.data.outputs?.length > 0) {
-      console.log(`Head swap completed after ${(i + 1) * 2}s`);
-      return pollResult.data.outputs[0];
-    }
-
-    if (pollResult.data?.status === 'failed') {
-      console.error('Head swap failed:', pollResult.data.error);
-      throw new HttpsError('internal', pollResult.data.error || 'Head swap failed');
-    }
-  }
-
-  throw new HttpsError('deadline-exceeded', 'Head swap timed out');
-}
-
-export const faceSwap = onCall(
-  { region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Must be authenticated');
-    }
-
-    const { sourceImageUrl, swapFaceUrl } = request.data;
-    if (!sourceImageUrl || typeof sourceImageUrl !== 'string') {
-      throw new HttpsError('invalid-argument', 'sourceImageUrl is required');
-    }
-    if (!swapFaceUrl || typeof swapFaceUrl !== 'string') {
-      throw new HttpsError('invalid-argument', 'swapFaceUrl is required');
-    }
-
-    const resultUrl = await callWaveSpeedHeadSwap(sourceImageUrl, swapFaceUrl);
-    return { imageUrl: resultUrl };
-  }
-);

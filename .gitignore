@@ -53,5 +53,11 @@ ui-debug.log
 .env
 env.local
 .env.production
+
+# Service Account Keys (NEVER commit these!)
+service-account.json
+*-service-account.json
+*.serviceaccount.json
+functions/service-account.json
 ios/
 .vercel

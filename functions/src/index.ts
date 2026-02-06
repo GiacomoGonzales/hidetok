@@ -8,8 +8,8 @@ if (admin.apps.length === 0) {
 
 const db = admin.firestore();
 
-// Re-export avatar generation functions
-export { generateAvatarPortrait, generateAvatarFullBody, faceSwap } from './generateAvatar';
+// Re-export avatar generation functions (Gemini only)
+export { generateAvatarWithGemini, avatarReplacement } from './generateAvatar';
 
 // Tipos de notificación y sus mensajes
 const notificationMessages: Record<string, (senderName: string) => { title: string; body: string }> = {

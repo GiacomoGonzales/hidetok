@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendMessagePushNotification = exports.sendPushNotification = exports.faceSwap = exports.generateAvatarFullBody = exports.generateAvatarPortrait = void 0;
+exports.sendMessagePushNotification = exports.sendPushNotification = exports.avatarReplacement = exports.generateAvatarWithGemini = void 0;
 const firestore_1 = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 // Inicializar Firebase Admin solo si no está inicializado
@@ -8,11 +8,10 @@ if (admin.apps.length === 0) {
     admin.initializeApp();
 }
 const db = admin.firestore();
-// Re-export avatar generation functions
+// Re-export avatar generation functions (Gemini only)
 var generateAvatar_1 = require("./generateAvatar");
-Object.defineProperty(exports, "generateAvatarPortrait", { enumerable: true, get: function () { return generateAvatar_1.generateAvatarPortrait; } });
-Object.defineProperty(exports, "generateAvatarFullBody", { enumerable: true, get: function () { return generateAvatar_1.generateAvatarFullBody; } });
-Object.defineProperty(exports, "faceSwap", { enumerable: true, get: function () { return generateAvatar_1.faceSwap; } });
+Object.defineProperty(exports, "generateAvatarWithGemini", { enumerable: true, get: function () { return generateAvatar_1.generateAvatarWithGemini; } });
+Object.defineProperty(exports, "avatarReplacement", { enumerable: true, get: function () { return generateAvatar_1.avatarReplacement; } });
 // Tipos de notificación y sus mensajes
 const notificationMessages = {
     like: (senderName) => ({

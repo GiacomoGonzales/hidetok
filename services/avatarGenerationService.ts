@@ -129,32 +129,59 @@ function buildPortraitPrompt(selections: AvatarSelections): string {
 
 // --- API calls ---
 
-export async function generatePortrait(
+// Helper to convert data URL to blob
+function dataURLtoBlob(dataURL: string): Blob {
+  const arr = dataURL.split(',');
+  const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
+}
+
+// Generate avatar using Vertex AI
+export async function generateAvatarWithGemini(
   selections: AvatarSelections
 ): Promise<string> {
+  if (!functions) {
+    throw new Error('Firebase functions not initialized');
+  }
   const prompt = buildPortraitPrompt(selections);
-  const callable = httpsCallable<{ prompt: string }, { imageUrl: string }>(
+  console.log('Calling generateAvatarWithGemini with selections:', JSON.stringify(selections).substring(0, 100));
+
+  const callable = httpsCallable<{ prompt: string; selections: AvatarSelections }, { imageUrl: string }>(
     functions,
-    'generateAvatarPortrait',
+    'generateAvatarWithGemini',
     { timeout: 120_000 }
   );
-  const result = await callable({ prompt });
-  return result.data.imageUrl;
+  // Send both prompt (legacy) and selections (new format)
+  const result = await callable({ prompt, selections });
+  return result.data.imageUrl; // Returns data URL (base64)
 }
 
-// --- Face Swap ---
+// --- Avatar Replacement (Vertex AI) ---
 
-export async function performFaceSwap(
-  sourceImageUrl: string,
-  swapFaceUrl: string
+export async function performAvatarReplacement(
+  selfieUrl: string,
+  avatarUrl: string,
+  avatarSelections?: AvatarSelections
 ): Promise<string> {
+  if (!functions) {
+    throw new Error('Firebase functions not initialized');
+  }
+  console.log('Calling Vertex AI avatarReplacement...');
   const callable = httpsCallable<
-    { sourceImageUrl: string; swapFaceUrl: string },
+    { selfieUrl: string; avatarUrl: string; avatarSelections?: AvatarSelections },
     { imageUrl: string }
-  >(functions, 'faceSwap', { timeout: 120_000 });
-  const result = await callable({ sourceImageUrl, swapFaceUrl });
-  return result.data.imageUrl;
+  >(functions, 'avatarReplacement', { timeout: 300_000 }); // 5 minutes
+  const result = await callable({ selfieUrl, avatarUrl, avatarSelections });
+  return result.data.imageUrl; // Returns data URL (base64)
 }
+
+// --- Upload helpers ---
 
 export async function uploadImageForSwap(
   userId: string,
@@ -174,7 +201,17 @@ export async function saveFaceSwapResult(
   resultUrl: string
 ): Promise<string> {
   const timestamp = Date.now();
-  const storagePath = `users/${userId}/face-swap/result_${timestamp}.webp`;
+  const storagePath = `users/${userId}/avatar-replacement/result_${timestamp}.png`;
+
+  // Check if it's a data URL (from Gemini)
+  if (resultUrl.startsWith('data:')) {
+    const blob = dataURLtoBlob(resultUrl);
+    const storageRef = ref(storage, storagePath);
+    await uploadBytes(storageRef, blob);
+    return getDownloadURL(storageRef);
+  }
+
+  // Otherwise it's a regular URL
   return uploadFromUrl(resultUrl, storagePath);
 }
 
@@ -191,23 +228,33 @@ async function uploadFromUrl(
   return getDownloadURL(storageRef);
 }
 
-export async function saveAndSetAvatar(
+// Save generated avatar (single image from Gemini)
+export async function saveGeneratedAvatar(
   userId: string,
   userDocId: string,
-  portraitUrl: string,
+  imageUrl: string,
   selections: AvatarSelections
-): Promise<{ portraitFirebaseUrl: string }> {
+): Promise<{ avatarUrl: string }> {
   const timestamp = Date.now();
+  const storagePath = `users/${userId}/ai-avatar/avatar_${timestamp}.png`;
 
-  const portraitFirebaseUrl = await uploadFromUrl(
-    portraitUrl,
-    `users/${userId}/ai-avatar/portrait_${timestamp}.webp`
-  );
+  let avatarUrl: string;
 
+  // Check if it's a data URL (from Gemini)
+  if (imageUrl.startsWith('data:')) {
+    const blob = dataURLtoBlob(imageUrl);
+    const storageRef = ref(storage, storagePath);
+    await uploadBytes(storageRef, blob);
+    avatarUrl = await getDownloadURL(storageRef);
+  } else {
+    avatarUrl = await uploadFromUrl(imageUrl, storagePath);
+  }
+
+  // Save to Firestore
   await usersService.update(userDocId, {
-    aiAvatarPortraitUrl: portraitFirebaseUrl,
+    aiAvatarPortraitUrl: avatarUrl,
     aiAvatarSelections: selections,
   });
 
-  return { portraitFirebaseUrl };
+  return { avatarUrl };
 }

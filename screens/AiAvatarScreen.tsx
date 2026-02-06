@@ -18,7 +18,7 @@ import { useUserProfile } from '../contexts/UserProfileContext';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS } from '../constants/design';
 import { scale } from '../utils/scale';
 import * as ImagePicker from 'expo-image-picker';
-import { generatePortrait, saveAndSetAvatar, performFaceSwap, uploadImageForSwap, saveFaceSwapResult } from '../services/avatarGenerationService';
+import { generateAvatarWithGemini, saveGeneratedAvatar, performAvatarReplacement, uploadImageForSwap, saveFaceSwapResult } from '../services/avatarGenerationService';
 import { usersService } from '../services/firestoreService';
 
 // --- Option data ---
@@ -146,8 +146,8 @@ const AiAvatarScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
 
-  // Generated URL from the API
-  const [portraitUrl, setPortraitUrl] = useState<string | null>(null);
+  // Generated URL from Gemini (single image)
+  const [generatedAvatarUrl, setGeneratedAvatarUrl] = useState<string | null>(null);
 
   const step1Complete = selectedGender && selectedSkinTone && selectedHairStyle && selectedAgeRange;
   const step2Complete = selectedEyeColor && selectedFaceShape && selectedExpression;
@@ -174,13 +174,17 @@ const AiAvatarScreen: React.FC = () => {
 
   const handleGenerate = async () => {
     if (!step1Complete || !step2Complete || !step3Complete) return;
+    if (!user?.uid) {
+      Alert.alert('Error', 'Debes iniciar sesión para generar un avatar.');
+      return;
+    }
     const selections = getSelections();
 
     setLoading(true);
-    setLoadingMessage('Generando tu avatar...');
+    setLoadingMessage('Generando avatar con Gemini AI...');
     try {
-      const portrait = await generatePortrait(selections);
-      setPortraitUrl(portrait);
+      const imageUrl = await generateAvatarWithGemini(selections);
+      setGeneratedAvatarUrl(imageUrl);
       setGenerated(true);
     } catch (error: any) {
       console.error('Error generating avatar:', error);
@@ -193,7 +197,7 @@ const AiAvatarScreen: React.FC = () => {
 
   const handleStartRegenerate = () => {
     setGenerated(false);
-    setPortraitUrl(null);
+    setGeneratedAvatarUrl(null);
     setStep(1);
     setShowWizard(true);
   };
@@ -201,15 +205,15 @@ const AiAvatarScreen: React.FC = () => {
   const handleRegenerate = async () => {
     if (!step1Complete || !step2Complete || !step3Complete) {
       setGenerated(false);
-      setPortraitUrl(null);
+      setGeneratedAvatarUrl(null);
       setStep(1);
       return;
     }
     setLoading(true);
-    setLoadingMessage('Regenerando avatar...');
+    setLoadingMessage('Regenerando avatar con Gemini AI...');
     try {
-      const portrait = await generatePortrait(getSelections());
-      setPortraitUrl(portrait);
+      const imageUrl = await generateAvatarWithGemini(getSelections());
+      setGeneratedAvatarUrl(imageUrl);
       setGenerated(true);
     } catch (error: any) {
       console.error('Error regenerating avatar:', error);
@@ -221,22 +225,22 @@ const AiAvatarScreen: React.FC = () => {
   };
 
   const handleUseAsAvatar = async () => {
-    if (!portraitUrl || !user?.uid || !userProfile?.id) return;
+    if (!generatedAvatarUrl || !user?.uid || !userProfile?.id) return;
 
     setLoading(true);
     setLoadingMessage('Guardando avatar...');
     try {
-      const { portraitFirebaseUrl } = await saveAndSetAvatar(
+      const { avatarUrl } = await saveGeneratedAvatar(
         user.uid,
         userProfile.id,
-        portraitUrl,
+        generatedAvatarUrl,
         getSelections(),
       );
       // Also set as profile photo when skipping face swap
-      await usersService.update(userProfile.id, { photoURL: portraitFirebaseUrl });
+      await usersService.update(userProfile.id, { photoURL: avatarUrl });
       updateLocalProfile({
-        photoURL: portraitFirebaseUrl,
-        aiAvatarPortraitUrl: portraitFirebaseUrl,
+        photoURL: avatarUrl,
+        aiAvatarPortraitUrl: avatarUrl,
         aiAvatarSelections: getSelections(),
         avatarType: 'custom',
       });
@@ -253,7 +257,7 @@ const AiAvatarScreen: React.FC = () => {
   // --- Face Swap ---
   const [swapResultUrl, setSwapResultUrl] = useState<string | null>(null);
 
-  // Pick image and do face swap using a given avatar URL (can be from generation or existing)
+  // Pick image and do avatar replacement using Gemini
   const pickImageForSwap = async (fromCamera: boolean, avatarUrl: string) => {
     if (!user?.uid) return;
 
@@ -290,14 +294,16 @@ const AiAvatarScreen: React.FC = () => {
     setLoadingMessage('Subiendo foto...');
     try {
       const uploadedUrl = await uploadImageForSwap(user.uid, result.assets[0].uri);
-      setLoadingMessage('Aplicando face swap...\nEsto puede tardar hasta 2 minutos la primera vez');
-      const swappedUrl = await performFaceSwap(uploadedUrl, avatarUrl);
+      setLoadingMessage('Reemplazando persona por avatar con Gemini AI...\n(Esto puede tomar 30-60 segundos)');
+      // Pass avatar selections for better replacement quality
+      const selections = step1Complete && step2Complete && step3Complete ? getSelections() : undefined;
+      const generatedImageUrl = await performAvatarReplacement(uploadedUrl, avatarUrl, selections);
       setLoadingMessage('Guardando resultado...');
-      const savedUrl = await saveFaceSwapResult(user.uid, swappedUrl);
+      const savedUrl = await saveFaceSwapResult(user.uid, generatedImageUrl);
       setSwapResultUrl(savedUrl);
     } catch (error: any) {
-      console.error('Error face swap:', error);
-      Alert.alert('Error', 'No se pudo realizar el face swap. Intenta de nuevo.');
+      console.error('Error avatar replacement:', error);
+      Alert.alert('Error', 'No se pudo reemplazar el avatar. Intenta de nuevo.');
     } finally {
       setLoading(false);
       setLoadingMessage('');
@@ -306,16 +312,16 @@ const AiAvatarScreen: React.FC = () => {
 
   // Save the swapped photo as profile photo + save avatar selections
   const handleUseSwapAsProfile = async () => {
-    if (!swapResultUrl || !user?.uid || !userProfile?.id || !portraitUrl) return;
+    if (!swapResultUrl || !user?.uid || !userProfile?.id || !generatedAvatarUrl) return;
 
     setLoading(true);
     setLoadingMessage('Guardando foto de perfil...');
     try {
-      // Save the avatar base image to Firebase
-      const { portraitFirebaseUrl } = await saveAndSetAvatar(
+      // Save avatar to Firebase
+      const { avatarUrl } = await saveGeneratedAvatar(
         user.uid,
         userProfile.id,
-        portraitUrl,
+        generatedAvatarUrl,
         getSelections(),
       );
       // Update profile with the swap result as photoURL
@@ -324,7 +330,7 @@ const AiAvatarScreen: React.FC = () => {
       });
       updateLocalProfile({
         photoURL: swapResultUrl,
-        aiAvatarPortraitUrl: portraitFirebaseUrl,
+        aiAvatarPortraitUrl: avatarUrl,
         aiAvatarSelections: getSelections(),
         avatarType: 'custom',
       });
@@ -439,10 +445,10 @@ const AiAvatarScreen: React.FC = () => {
       {/* Face Swap */}
       <View style={[styles.sectionBlock, { marginTop: SPACING.xxl }]}>
         <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-          Face Swap
+          Reemplazo de Persona
         </Text>
         <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>
-          Toma o sube una foto y se reemplazará tu cara con la de tu avatar
+          Toma o sube una foto y se reemplazará la persona con tu avatar usando Gemini AI
         </Text>
 
         <View style={styles.swapButtonsRow}>
@@ -736,11 +742,11 @@ const AiAvatarScreen: React.FC = () => {
         <>
           {!swapResultUrl ? (
             <>
-              {/* Avatar preview */}
+              {/* Avatar preview - single image from Gemini */}
               <View style={styles.previewContainer}>
-                {portraitUrl && (
+                {generatedAvatarUrl && (
                   <Image
-                    source={{ uri: portraitUrl }}
+                    source={{ uri: generatedAvatarUrl }}
                     style={styles.previewImagePortrait}
                     resizeMode="cover"
                   />
@@ -748,10 +754,10 @@ const AiAvatarScreen: React.FC = () => {
               </View>
 
               <Text style={[styles.sectionTitle, { color: theme.colors.text, textAlign: 'center', marginBottom: SPACING.sm }]}>
-                Avatar generado
+                Avatar generado con Gemini AI
               </Text>
               <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary, textAlign: 'center' }]}>
-                Ahora toma o sube una foto tuya para aplicar el face swap con tu avatar
+                Ahora toma o sube una foto tuya para aplicar el reemplazo de persona con tu avatar
               </Text>
 
               {/* Take photo / gallery buttons */}
@@ -759,7 +765,7 @@ const AiAvatarScreen: React.FC = () => {
                 <TouchableOpacity
                   style={[styles.swapButton, { backgroundColor: theme.colors.accent }]}
                   activeOpacity={0.8}
-                  onPress={() => portraitUrl && pickImageForSwap(true, portraitUrl)}
+                  onPress={() => generatedAvatarUrl && pickImageForSwap(true, generatedAvatarUrl)}
                 >
                   <Ionicons name="camera" size={scale(22)} color="#FFFFFF" />
                   <Text style={styles.swapButtonText}>Tomar foto</Text>
@@ -767,7 +773,7 @@ const AiAvatarScreen: React.FC = () => {
                 <TouchableOpacity
                   style={[styles.swapButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1 }]}
                   activeOpacity={0.8}
-                  onPress={() => portraitUrl && pickImageForSwap(false, portraitUrl)}
+                  onPress={() => generatedAvatarUrl && pickImageForSwap(false, generatedAvatarUrl)}
                 >
                   <Ionicons name="images" size={scale(22)} color={theme.colors.accent} />
                   <Text style={[styles.swapButtonText, { color: theme.colors.accent }]}>Galería</Text>
@@ -807,7 +813,7 @@ const AiAvatarScreen: React.FC = () => {
               </View>
 
               <Text style={[styles.sectionTitle, { color: theme.colors.text, textAlign: 'center', marginBottom: SPACING.lg }]}>
-                Resultado del face swap
+                Resultado del reemplazo
               </Text>
 
               {/* Action buttons */}
@@ -825,7 +831,7 @@ const AiAvatarScreen: React.FC = () => {
                   style={[styles.secondaryButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, flex: 1 }]}
                   onPress={() => {
                     setSwapResultUrl(null);
-                    if (portraitUrl) pickImageForSwap(true, portraitUrl);
+                    if (generatedAvatarUrl) pickImageForSwap(true, generatedAvatarUrl);
                   }}
                   activeOpacity={0.7}
                 >

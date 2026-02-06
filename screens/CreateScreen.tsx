@@ -19,7 +19,7 @@ import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { postsService } from '../services/firestoreService';
 import { uploadPostImage, uploadPostVideo } from '../services/storageService';
-import { performFaceSwap, uploadImageForSwap, saveFaceSwapResult } from '../services/avatarGenerationService';
+import { performAvatarReplacement, uploadImageForSwap, saveFaceSwapResult } from '../services/avatarGenerationService';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
@@ -94,7 +94,8 @@ const CreateScreen: React.FC = () => {
     setFaceSwapLoading(true);
     try {
       const uploadedUrl = await uploadImageForSwap(user.uid, result.assets[0].uri);
-      const swappedUrl = await performFaceSwap(uploadedUrl, userProfile.aiAvatarPortraitUrl);
+      const avatarImageUrl = userProfile.aiAvatarPortraitUrl;
+      const swappedUrl = await performAvatarReplacement(uploadedUrl, avatarImageUrl);
       const savedUrl = await saveFaceSwapResult(user.uid, swappedUrl);
 
       setAttachedMedia(prev => [...prev, {
@@ -897,7 +898,7 @@ const CreateScreen: React.FC = () => {
           <View style={[styles.faceSwapLoadingBox, { backgroundColor: theme.colors.surface }]}>
             <ActivityIndicator size="large" color={theme.colors.accent} />
             <Text style={[styles.faceSwapLoadingText, { color: theme.colors.text }]}>
-              Aplicando face swap...{'\n'}Puede tardar hasta 2 min la primera vez
+              Aplicando face swap...
             </Text>
           </View>
         </View>
