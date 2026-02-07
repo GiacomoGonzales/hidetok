@@ -273,6 +273,7 @@ const AiAvatarScreen: React.FC = () => {
         quality: 0.8,
         allowsEditing: true,
         aspect: [1, 1],
+        base64: true,
       });
     } else {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -285,15 +286,17 @@ const AiAvatarScreen: React.FC = () => {
         quality: 0.8,
         allowsEditing: true,
         aspect: [1, 1],
+        base64: true,
       });
     }
 
-    if (result.canceled || !result.assets?.[0]?.uri) return;
+    const asset = result.assets?.[0];
+    if (result.canceled || !asset?.uri) return;
 
     setLoading(true);
     setLoadingMessage('Subiendo foto...');
     try {
-      const uploadedUrl = await uploadImageForSwap(user.uid, result.assets[0].uri);
+      const uploadedUrl = await uploadImageForSwap(user.uid, asset.uri, asset.base64);
       setLoadingMessage('Reemplazando persona por avatar con Gemini AI...\n(Esto puede tomar 30-60 segundos)');
       // Pass avatar selections for better replacement quality
       const selections = step1Complete && step2Complete && step3Complete ? getSelections() : undefined;

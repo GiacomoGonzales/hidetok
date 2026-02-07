@@ -75,6 +75,7 @@ const CreateScreen: React.FC = () => {
         mediaTypes: ['images'],
         quality: 0.8,
         allowsEditing: true,
+        base64: true,
       });
     } else {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -86,14 +87,16 @@ const CreateScreen: React.FC = () => {
         mediaTypes: ['images'],
         quality: 0.8,
         allowsEditing: true,
+        base64: true,
       });
     }
 
-    if (result.canceled || !result.assets?.[0]?.uri) return;
+    const asset = result.assets?.[0];
+    if (result.canceled || !asset?.uri) return;
 
     setFaceSwapLoading(true);
     try {
-      const uploadedUrl = await uploadImageForSwap(user.uid, result.assets[0].uri);
+      const uploadedUrl = await uploadImageForSwap(user.uid, asset.uri, asset.base64);
       const avatarImageUrl = userProfile.aiAvatarPortraitUrl;
       const swappedUrl = await performAvatarReplacement(uploadedUrl, avatarImageUrl);
       const savedUrl = await saveFaceSwapResult(user.uid, swappedUrl);

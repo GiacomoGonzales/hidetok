@@ -3,9 +3,9 @@
  * Avatar Generation Cloud Functions
  *
  * Professional implementation using Vertex AI:
- * - Gemini 1.5 Pro for scene analysis
+ * - Gemini 2.5 Flash for scene analysis
  * - Imagen 3 for avatar generation
- * - Imagen 3 Edit for person replacement
+ * - Gemini 2.5 Flash Image for person replacement (with Imagen 3 Edit fallback)
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.avatarReplacement = exports.generateAvatarWithGemini = void 0;
@@ -57,9 +57,13 @@ exports.generateAvatarWithGemini = (0, https_1.onCall)({
     const startTime = Date.now();
     try {
         const imageDataUrl = await (0, vertexAI_1.generateAvatarWithImagen)(avatarConfig);
+        // Upload to Cloud Storage and return public URL
+        const userId = request.auth.uid;
+        const storagePath = `users/${userId}/ai-avatar/avatar_${Date.now()}.png`;
+        const publicUrl = await (0, vertexAI_1.uploadImageToStorage)(imageDataUrl, storagePath);
         const totalTime = Date.now() - startTime;
-        console.log(`Avatar generated in ${totalTime}ms`);
-        return { imageUrl: imageDataUrl };
+        console.log(`Avatar generated and uploaded in ${totalTime}ms`);
+        return { imageUrl: publicUrl };
     }
     catch (error) {
         console.error('Avatar generation failed:', error);
@@ -109,8 +113,8 @@ exports.avatarReplacement = (0, https_1.onCall)({
             (0, vertexAI_1.urlToBase64)(avatarUrl),
         ]);
         console.log('    ✓ Images downloaded');
-        // Step 2: Analyze scene with Gemini 1.5 Pro
-        console.log('\n[2/3] Analyzing scene with Gemini 1.5 Pro...');
+        // Step 2: Analyze scene with Gemini 2.5 Flash
+        console.log('\n[2/3] Analyzing scene with Gemini 2.5 Flash...');
         const sceneAnalysis = await (0, vertexAI_1.analyzeSceneWithGemini)(selfieData.base64, selfieData.mimeType);
         console.log('    ✓ Scene analyzed:', JSON.stringify(sceneAnalysis, null, 2).substring(0, 200));
         // Get avatar config from selections or use defaults
@@ -133,13 +137,17 @@ exports.avatarReplacement = (0, https_1.onCall)({
             faceShape: 'oval face',
             expression: 'natural expression',
         };
-        // Step 3: Replace person with Imagen 3
-        console.log('\n[3/3] Replacing person with Vertex AI...');
-        const resultImageUrl = await (0, vertexAI_1.replacePersonWithAvatar)(selfieData.base64, selfieData.mimeType, avatarData.base64, avatarData.mimeType, sceneAnalysis, avatarConfig);
+        // Step 3: Replace person with Gemini 2.5 Flash Image (fallback: Imagen 3 Edit)
+        console.log('\n[3/3] Replacing person with Gemini 2.5 Flash Image...');
+        const resultDataUrl = await (0, vertexAI_1.replacePersonWithAvatar)(selfieData.base64, selfieData.mimeType, avatarData.base64, avatarData.mimeType, sceneAnalysis, avatarConfig);
         console.log('    ✓ Person replaced');
+        // Upload result to Cloud Storage and return public URL
+        const userId = request.auth.uid;
+        const storagePath = `users/${userId}/avatar-replacement/result_${Date.now()}.png`;
+        const publicUrl = await (0, vertexAI_1.uploadImageToStorage)(resultDataUrl, storagePath);
         const totalTime = Date.now() - startTime;
-        console.log(`\n✓ Avatar replacement completed in ${totalTime}ms`);
-        return { imageUrl: resultImageUrl };
+        console.log(`\n✓ Avatar replacement completed and uploaded in ${totalTime}ms`);
+        return { imageUrl: publicUrl };
     }
     catch (error) {
         console.error('Avatar replacement failed:', error);

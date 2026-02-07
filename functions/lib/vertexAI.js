@@ -2,9 +2,10 @@
 /**
  * AI Integration for Professional Avatar Generation
  *
- * Architecture (as recommended by Gemini):
- * - Gemini 1.5 Pro: Image analysis - the "Brain" (pose, lighting, objects)
- * - Imagen 3: Image generation - the "Painter" (stable, photorealistic)
+ * Architecture:
+ * - Gemini 2.5 Flash (text): Scene analysis - the "Brain" (pose, lighting, objects, hands, interactions)
+ * - Imagen 3: Image generation - the "Painter" (stable, photorealistic avatar generation)
+ * - Gemini 2.5 Flash Image: Person replacement - the "Surgeon" (multi-modal replacement)
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.analyzeSceneWithGemini = analyzeSceneWithGemini;
@@ -14,8 +15,6 @@ exports.uploadImageToStorage = uploadImageToStorage;
 exports.urlToBase64 = urlToBase64;
 exports.getMimeTypeFromUrl = getMimeTypeFromUrl;
 // Project configuration
-const PROJECT_ID = 'hidetok-9a642';
-const LOCATION = 'us-central1';
 const BUCKET_NAME = 'hidetok-9a642.firebasestorage.app';
 // Get API key from environment
 function getGeminiApiKey() {
@@ -26,26 +25,15 @@ function getGeminiApiKey() {
     return key;
 }
 // Lazy-loaded clients
-let geminiInstance = null;
-let predictionClientInstance = null;
+let genAIInstance = null;
 let storageInstance = null;
-async function getGemini() {
-    if (!geminiInstance) {
-        const { GoogleGenerativeAI } = await Promise.resolve().then(() => require('@google/generative-ai'));
-        geminiInstance = new GoogleGenerativeAI(getGeminiApiKey());
-        console.log('Gemini AI initialized');
+async function getGenAI() {
+    if (!genAIInstance) {
+        const { GoogleGenAI } = await Promise.resolve().then(() => require('@google/genai'));
+        genAIInstance = new GoogleGenAI({ apiKey: getGeminiApiKey() });
+        console.log('Google GenAI initialized');
     }
-    return geminiInstance;
-}
-async function getPredictionClient() {
-    if (!predictionClientInstance) {
-        const { PredictionServiceClient } = await Promise.resolve().then(() => require('@google-cloud/aiplatform'));
-        predictionClientInstance = new PredictionServiceClient({
-            apiEndpoint: `${LOCATION}-aiplatform.googleapis.com`,
-        });
-        console.log('Vertex AI Prediction Client initialized');
-    }
-    return predictionClientInstance;
+    return genAIInstance;
 }
 async function getStorage() {
     if (!storageInstance) {
@@ -56,17 +44,14 @@ async function getStorage() {
     return storageInstance;
 }
 // ============================================
-// GEMINI 1.5 PRO - IMAGE ANALYSIS (Brain)
+// GEMINI 2.5 FLASH - SCENE ANALYSIS (Brain)
 // ============================================
 /**
  * Analyzes a selfie image and extracts detailed scene information
- * Returns structured JSON with pose, lighting, and background details
+ * Uses Gemini 2.5 Flash (text) for fast, accurate analysis
  */
 async function analyzeSceneWithGemini(imageBase64, mimeType) {
-    const genAI = await getGemini();
-    const model = genAI.getGenerativeModel({
-        model: 'gemini-1.5-pro',
-    });
+    const ai = await getGenAI();
     const prompt = `Analyze this image and extract detailed information in JSON format.
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks):
@@ -75,8 +60,11 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
     "gender": "male/female/unknown",
     "clothing": "description of what they're wearing",
     "accessories": ["list", "of", "accessories"],
-    "pose": "standing/sitting/leaning/etc",
-    "bodyPosition": "detailed description of body orientation"
+    "pose": "standing/sitting/leaning/crouching/etc",
+    "bodyPosition": "detailed description of body orientation and limb positions",
+    "handPositions": "exact position of each hand (e.g. 'left hand holding phone near face, right hand resting on hip')",
+    "objectInteractions": ["list of objects the person is touching, holding, leaning on, or interacting with"],
+    "facialOrientation": "direction the face is looking (e.g. 'looking directly at camera', 'looking left and slightly down', '3/4 view facing right')"
   },
   "camera": {
     "angle": "eye-level/high-angle/low-angle",
@@ -94,18 +82,30 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
     "objects": ["visible", "background", "objects"],
     "depth": "shallow/medium/deep blur"
   }
-}`;
-    const result = await model.generateContent([
-        prompt,
-        {
-            inlineData: {
-                mimeType: mimeType,
-                data: imageBase64,
+}
+
+Pay special attention to:
+- Hand positions: describe exactly where each hand is and what it's doing
+- Object interactions: list every object the person is touching, holding, or physically interacting with
+- Facial orientation: precise direction the face and eyes are pointing`;
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+            {
+                role: 'user',
+                parts: [
+                    { text: prompt },
+                    {
+                        inlineData: {
+                            mimeType: mimeType,
+                            data: imageBase64,
+                        },
+                    },
+                ],
             },
-        },
-    ]);
-    const response = result.response;
-    const text = response.text() || '';
+        ],
+    });
+    const text = response.text || '';
     // Clean and parse JSON
     let jsonStr = text.trim();
     if (jsonStr.startsWith('```')) {
@@ -123,6 +123,9 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
                 accessories: [],
                 pose: 'standing',
                 bodyPosition: 'facing camera',
+                handPositions: 'hands at sides',
+                objectInteractions: [],
+                facialOrientation: 'looking directly at camera',
             },
             camera: {
                 angle: 'eye-level',
@@ -147,42 +150,36 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
 // IMAGEN 3 - AVATAR GENERATION (Painter)
 // ============================================
 /**
- * Generates an avatar image using Imagen 3 via Vertex AI
+ * Generates an avatar image using Gemini 2.5 Flash Image
  */
 async function generateAvatarWithImagen(avatarConfig, sceneContext) {
-    var _a, _b, _c;
+    var _a, _b;
     const prompt = buildAvatarPrompt(avatarConfig, sceneContext);
-    console.log('Generating avatar with Imagen 3...');
+    console.log('Generating avatar with Gemini 2.5 Flash Image...');
     console.log('Prompt:', prompt.substring(0, 200) + '...');
-    const client = await getPredictionClient();
-    // Imagen 3 endpoint
-    const endpoint = `projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/imagen-3.0-generate-001`;
-    const instance = {
-        prompt: prompt,
-    };
-    const parameters = {
-        sampleCount: 1,
-        aspectRatio: '1:1',
-        safetyFilterLevel: 'block_only_high',
-        personGeneration: 'allow_adult',
-    };
-    const request = {
-        endpoint,
-        instances: [{ structValue: { fields: toProtobufStruct(instance) } }],
-        parameters: { structValue: { fields: toProtobufStruct(parameters) } },
-    };
-    const [response] = await client.predict(request);
-    // Extract the generated image
-    const predictions = response.predictions;
-    if (!predictions || predictions.length === 0) {
-        throw new Error('No image generated by Imagen 3');
+    const ai = await getGenAI();
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+            responseModalities: ['IMAGE', 'TEXT'],
+        },
+    });
+    const candidates = response.candidates;
+    if (!candidates || candidates.length === 0) {
+        throw new Error('No candidates in Gemini response');
     }
-    const prediction = predictions[0];
-    const imageBytes = (_c = (_b = (_a = prediction.structValue) === null || _a === void 0 ? void 0 : _a.fields) === null || _b === void 0 ? void 0 : _b.bytesBase64Encoded) === null || _c === void 0 ? void 0 : _c.stringValue;
-    if (!imageBytes) {
-        throw new Error('No image data in Imagen 3 response');
+    const parts = (_a = candidates[0].content) === null || _a === void 0 ? void 0 : _a.parts;
+    if (!parts) {
+        throw new Error('No parts in Gemini response');
     }
-    return `data:image/png;base64,${imageBytes}`;
+    for (const part of parts) {
+        if ((_b = part.inlineData) === null || _b === void 0 ? void 0 : _b.data) {
+            const mimeType = part.inlineData.mimeType || 'image/png';
+            return `data:${mimeType};base64,${part.inlineData.data}`;
+        }
+    }
+    throw new Error('No image data in Gemini response');
 }
 /**
  * Builds a detailed prompt for avatar generation
@@ -224,69 +221,147 @@ function buildAvatarPrompt(config, scene) {
     return parts.join(' ');
 }
 // ============================================
-// IMAGEN 3 - PERSON REPLACEMENT (Inpainting)
+// GEMINI 2.5 FLASH IMAGE - PERSON REPLACEMENT
 // ============================================
 /**
- * Replaces a person in an image with the avatar using Imagen 3 Edit
- * Uses inpainting to swap the person while keeping the background
+ * Builds the detailed replacement prompt for Gemini 2.5 Flash Image
  */
-async function replacePersonWithAvatar(selfieBase64, selfieMimeType, avatarBase64, avatarMimeType, sceneAnalysis, avatarConfig) {
-    var _a, _b, _c;
-    // Build the edit prompt
-    const editPrompt = buildReplacementPrompt(sceneAnalysis, avatarConfig);
-    console.log('Replacing person with Imagen 3 Edit...');
+function buildGeminiReplacementPrompt(scene, avatar) {
+    // Build avatar identity description
+    const identityParts = [];
+    identityParts.push(`a ${avatar.ageRange} ${avatar.gender}`);
+    identityParts.push(`with ${avatar.skinTone}, ${avatar.hairStyle}, ${avatar.eyeColor}, ${avatar.faceShape}`);
+    if (avatar.facialHair && avatar.facialHair !== '') {
+        identityParts.push(`with ${avatar.facialHair}`);
+    }
+    identityParts.push(`showing ${avatar.expression}`);
+    const identityDesc = identityParts.join(' ');
+    return `You are given two images:
+- Image B (first image): A portrait/avatar of a person. This is the IDENTITY to use.
+- Image A (second image): A photo with a person in a scene. This is the SCENE to preserve.
+
+Your task: Generate a new image that replaces the person in Image A with the person from Image B, while preserving EVERYTHING else from Image A.
+
+IDENTITY (from Image B / avatar description): ${identityDesc}
+
+CRITICAL PRESERVATION RULES:
+1. POSE & BODY: Keep the exact same pose (${scene.person.pose}), body position (${scene.person.bodyPosition}), and clothing (${scene.person.clothing}).
+2. HANDS: Preserve hand positions exactly: ${scene.person.handPositions}. If hands are holding or touching objects, keep the interaction intact.
+3. OBJECT INTERACTIONS: The person is interacting with: [${scene.person.objectInteractions.join(', ')}]. These interactions MUST be preserved in the output.
+4. FACE DIRECTION: The face should be oriented: ${scene.person.facialOrientation}.
+5. LIGHTING: Maintain ${scene.lighting.type} lighting from ${scene.lighting.direction}, ${scene.lighting.intensity} intensity, ${scene.lighting.color} color temperature.
+6. CAMERA: Keep ${scene.camera.angle} angle, ${scene.camera.distance} distance, ${scene.camera.framing} framing.
+7. BACKGROUND: Preserve the background exactly: ${scene.background.setting}. Objects: [${scene.background.objects.join(', ')}].
+8. ASPECT RATIO: Keep the same dimensions and aspect ratio as Image A.
+
+OUTPUT: A single photorealistic image with the person from Image B placed naturally into Image A's scene, matching all the above rules.`;
+}
+/**
+ * Replaces a person in a photo using Gemini 2.5 Flash Image (multi-modal)
+ * Sends avatar + selfie and generates the replacement directly
+ */
+async function replacePersonWithGeminiImage(selfieBase64, selfieMimeType, avatarBase64, avatarMimeType, sceneAnalysis, avatarConfig) {
+    var _a, _b;
+    const ai = await getGenAI();
+    const prompt = buildGeminiReplacementPrompt(sceneAnalysis, avatarConfig);
+    console.log('Replacing person with Gemini 2.5 Flash Image...');
+    console.log('Replacement prompt:', prompt.substring(0, 200) + '...');
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: [
+            {
+                role: 'user',
+                parts: [
+                    // Avatar (Image B) first - to establish identity
+                    {
+                        inlineData: {
+                            mimeType: avatarMimeType,
+                            data: avatarBase64,
+                        },
+                    },
+                    // Selfie (Image A) second - to preserve aspect ratio
+                    {
+                        inlineData: {
+                            mimeType: selfieMimeType,
+                            data: selfieBase64,
+                        },
+                    },
+                    { text: prompt },
+                ],
+            },
+        ],
+        config: {
+            responseModalities: ['IMAGE', 'TEXT'],
+        },
+    });
+    // Extract image from response
+    const candidates = response.candidates;
+    if (!candidates || candidates.length === 0) {
+        throw new Error('No candidates in Gemini 2.5 Flash Image response');
+    }
+    const parts = (_a = candidates[0].content) === null || _a === void 0 ? void 0 : _a.parts;
+    if (!parts) {
+        throw new Error('No parts in Gemini 2.5 Flash Image response');
+    }
+    for (const part of parts) {
+        if ((_b = part.inlineData) === null || _b === void 0 ? void 0 : _b.data) {
+            const imgMimeType = part.inlineData.mimeType || 'image/png';
+            return `data:${imgMimeType};base64,${part.inlineData.data}`;
+        }
+    }
+    throw new Error('No image data found in Gemini 2.5 Flash Image response');
+}
+// ============================================
+// IMAGEN 3 EDIT - LEGACY PERSON REPLACEMENT
+// ============================================
+/**
+ * Replaces a person in an image with the avatar using Imagen 3 Edit (legacy)
+ * Uses inpainting via Google GenAI SDK
+ */
+async function replacePersonWithImagen3Edit(selfieBase64, selfieMimeType, avatarBase64, avatarMimeType, sceneAnalysis, avatarConfig) {
+    var _a;
+    const editPrompt = buildReplacementPromptLegacy(sceneAnalysis, avatarConfig);
+    console.log('Replacing person with Imagen 3 Edit (legacy fallback)...');
     console.log('Edit prompt:', editPrompt.substring(0, 200) + '...');
-    const client = await getPredictionClient();
-    // Imagen 3 Edit endpoint
-    const endpoint = `projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/imagen-3.0-capability-001`;
-    const instance = {
+    const ai = await getGenAI();
+    const response = await ai.models.editImage({
+        model: 'imagen-3.0-capability-001',
         prompt: editPrompt,
         image: {
             bytesBase64Encoded: selfieBase64,
+            mimeType: selfieMimeType,
         },
-        // Reference image for the new person
         referenceImages: [{
                 referenceType: 'REFERENCE_TYPE_SUBJECT',
                 referenceId: 1,
                 referenceImage: {
-                    bytesBase64Encoded: avatarBase64,
+                    image: {
+                        bytesBase64Encoded: avatarBase64,
+                        mimeType: avatarMimeType,
+                    },
                 },
             }],
-    };
-    const parameters = {
-        sampleCount: 1,
-        editMode: 'EDIT_MODE_INPAINT_INSERTION',
-        safetyFilterLevel: 'block_only_high',
-        personGeneration: 'allow_adult',
-    };
-    const request = {
-        endpoint,
-        instances: [{ structValue: { fields: toProtobufStruct(instance) } }],
-        parameters: { structValue: { fields: toProtobufStruct(parameters) } },
-    };
-    try {
-        const [response] = await client.predict(request);
-        const predictions = response.predictions;
-        if (!predictions || predictions.length === 0) {
-            throw new Error('No image generated by Imagen 3 Edit');
-        }
-        const prediction = predictions[0];
-        const imageBytes = (_c = (_b = (_a = prediction.structValue) === null || _a === void 0 ? void 0 : _a.fields) === null || _b === void 0 ? void 0 : _b.bytesBase64Encoded) === null || _c === void 0 ? void 0 : _c.stringValue;
-        if (!imageBytes) {
-            throw new Error('No image data in Imagen 3 Edit response');
-        }
-        return `data:image/png;base64,${imageBytes}`;
+        config: {
+            editMode: 'EDIT_MODE_INPAINT_INSERTION',
+            numberOfImages: 1,
+            safetyFilterLevel: 'BLOCK_ONLY_HIGH',
+            personGeneration: 'ALLOW_ADULT',
+        },
+    });
+    const generatedImages = response.generatedImages;
+    if (!generatedImages || generatedImages.length === 0) {
+        throw new Error('No image generated by Imagen 3 Edit');
     }
-    catch (error) {
-        console.error('Imagen 3 Edit failed, falling back to generation:', error.message);
-        // Fallback: Generate a new image with the avatar in the scene context
-        return generateAvatarWithImagen(avatarConfig, sceneAnalysis);
+    const imageBytes = (_a = generatedImages[0].image) === null || _a === void 0 ? void 0 : _a.imageBytes;
+    if (!imageBytes) {
+        throw new Error('No image data in Imagen 3 Edit response');
     }
+    return `data:image/png;base64,${imageBytes}`;
 }
 /**
- * Builds the replacement/edit prompt
+ * Builds the replacement/edit prompt for Imagen 3 Edit (legacy)
  */
-function buildReplacementPrompt(scene, avatar) {
+function buildReplacementPromptLegacy(scene, avatar) {
     const parts = [];
     parts.push(`Replace the person with a ${avatar.gender} ${avatar.ageRange}`);
     parts.push(`with ${avatar.skinTone}, ${avatar.hairStyle}, ${avatar.eyeColor}`);
@@ -300,47 +375,38 @@ function buildReplacementPrompt(scene, avatar) {
     return parts.join(' ');
 }
 // ============================================
-// HELPERS
+// PUBLIC REPLACEMENT FUNCTION (with fallbacks)
 // ============================================
 /**
- * Converts a JS object to Protobuf Struct fields format
+ * Replaces a person in an image with the avatar
+ *
+ * Strategy:
+ * 1. Primary: Gemini 2.5 Flash Image (multi-modal, best quality)
+ * 2. Fallback 1: Imagen 3 Edit (legacy inpainting)
+ * 3. Fallback 2: Generate avatar standalone with scene context
  */
-function toProtobufStruct(obj) {
-    const fields = {};
-    for (const [key, value] of Object.entries(obj)) {
-        if (value === null || value === undefined)
-            continue;
-        if (typeof value === 'string') {
-            fields[key] = { stringValue: value };
-        }
-        else if (typeof value === 'number') {
-            if (Number.isInteger(value)) {
-                fields[key] = { numberValue: value };
-            }
-            else {
-                fields[key] = { numberValue: value };
-            }
-        }
-        else if (typeof value === 'boolean') {
-            fields[key] = { boolValue: value };
-        }
-        else if (Array.isArray(value)) {
-            fields[key] = {
-                listValue: {
-                    values: value.map(item => {
-                        if (typeof item === 'object') {
-                            return { structValue: { fields: toProtobufStruct(item) } };
-                        }
-                        return { stringValue: String(item) };
-                    }),
-                },
-            };
-        }
-        else if (typeof value === 'object') {
-            fields[key] = { structValue: { fields: toProtobufStruct(value) } };
-        }
+async function replacePersonWithAvatar(selfieBase64, selfieMimeType, avatarBase64, avatarMimeType, sceneAnalysis, avatarConfig) {
+    // Primary: Gemini 2.5 Flash Image
+    try {
+        const result = await replacePersonWithGeminiImage(selfieBase64, selfieMimeType, avatarBase64, avatarMimeType, sceneAnalysis, avatarConfig);
+        console.log('Person replaced successfully with Gemini 2.5 Flash Image');
+        return result;
     }
-    return fields;
+    catch (error) {
+        console.error('Gemini 2.5 Flash Image failed:', error.message);
+    }
+    // Fallback 1: Imagen 3 Edit
+    try {
+        const result = await replacePersonWithImagen3Edit(selfieBase64, selfieMimeType, avatarBase64, avatarMimeType, sceneAnalysis, avatarConfig);
+        console.log('Person replaced with Imagen 3 Edit (fallback 1)');
+        return result;
+    }
+    catch (error) {
+        console.error('Imagen 3 Edit also failed:', error.message);
+    }
+    // Fallback 2: Generate avatar standalone with scene context
+    console.log('All replacement methods failed, generating avatar with scene context (fallback 2)');
+    return generateAvatarWithImagen(avatarConfig, sceneAnalysis);
 }
 // ============================================
 // CLOUD STORAGE HELPERS

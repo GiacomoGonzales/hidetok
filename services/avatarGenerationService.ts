@@ -1,5 +1,6 @@
 import { httpsCallable } from 'firebase/functions';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import * as FileSystem from 'expo-file-system';
 import { functions, storage } from '../config/firebase';
 import { usersService } from './firestoreService';
 
@@ -129,20 +130,8 @@ function buildPortraitPrompt(selections: AvatarSelections): string {
 
 // --- API calls ---
 
-// Helper to convert data URL to blob
-function dataURLtoBlob(dataURL: string): Blob {
-  const arr = dataURL.split(',');
-  const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while (n--) {
-    u8arr[n] = bstr.charCodeAt(n);
-  }
-  return new Blob([u8arr], { type: mime });
-}
-
-// Generate avatar using Vertex AI
+// Generate avatar using Gemini AI
+// Cloud function now returns a public Storage URL (not data URL)
 export async function generateAvatarWithGemini(
   selections: AvatarSelections
 ): Promise<string> {
@@ -157,13 +146,13 @@ export async function generateAvatarWithGemini(
     'generateAvatarWithGemini',
     { timeout: 120_000 }
   );
-  // Send both prompt (legacy) and selections (new format)
   const result = await callable({ prompt, selections });
-  return result.data.imageUrl; // Returns data URL (base64)
+  return result.data.imageUrl; // Returns public Storage URL
 }
 
-// --- Avatar Replacement (Vertex AI) ---
+// --- Avatar Replacement ---
 
+// Cloud function now returns a public Storage URL (not data URL)
 export async function performAvatarReplacement(
   selfieUrl: string,
   avatarUrl: string,
@@ -172,89 +161,62 @@ export async function performAvatarReplacement(
   if (!functions) {
     throw new Error('Firebase functions not initialized');
   }
-  console.log('Calling Vertex AI avatarReplacement...');
+  console.log('Calling avatarReplacement cloud function...');
   const callable = httpsCallable<
     { selfieUrl: string; avatarUrl: string; avatarSelections?: AvatarSelections },
     { imageUrl: string }
-  >(functions, 'avatarReplacement', { timeout: 300_000 }); // 5 minutes
+  >(functions, 'avatarReplacement', { timeout: 300_000 });
   const result = await callable({ selfieUrl, avatarUrl, avatarSelections });
-  return result.data.imageUrl; // Returns data URL (base64)
+  return result.data.imageUrl; // Returns public Storage URL
 }
 
 // --- Upload helpers ---
 
+// Upload selfie for face swap using base64 (no blobs)
 export async function uploadImageForSwap(
   userId: string,
-  imageUri: string
+  imageUri: string,
+  base64Data?: string | null
 ): Promise<string> {
-  const response = await fetch(imageUri);
-  const blob = await response.blob();
   const timestamp = Date.now();
   const storagePath = `users/${userId}/face-swap/source_${timestamp}.jpg`;
   const storageRef = ref(storage, storagePath);
-  await uploadBytes(storageRef, blob);
+
+  let base64 = base64Data;
+  if (!base64) {
+    base64 = await FileSystem.readAsStringAsync(imageUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+  }
+
+  await uploadString(storageRef, base64, 'base64', { contentType: 'image/jpeg' });
   return getDownloadURL(storageRef);
 }
 
+// Save face swap result - now receives a URL, just returns it
 export async function saveFaceSwapResult(
   userId: string,
   resultUrl: string
 ): Promise<string> {
-  const timestamp = Date.now();
-  const storagePath = `users/${userId}/avatar-replacement/result_${timestamp}.png`;
-
-  // Check if it's a data URL (from Gemini)
-  if (resultUrl.startsWith('data:')) {
-    const blob = dataURLtoBlob(resultUrl);
-    const storageRef = ref(storage, storagePath);
-    await uploadBytes(storageRef, blob);
-    return getDownloadURL(storageRef);
-  }
-
-  // Otherwise it's a regular URL
-  return uploadFromUrl(resultUrl, storagePath);
+  // Cloud function already saved to Storage, just return the URL
+  return resultUrl;
 }
 
 // --- Save to Storage + Firestore ---
 
-async function uploadFromUrl(
-  remoteUrl: string,
-  storagePath: string
-): Promise<string> {
-  const response = await fetch(remoteUrl);
-  const blob = await response.blob();
-  const storageRef = ref(storage, storagePath);
-  await uploadBytes(storageRef, blob);
-  return getDownloadURL(storageRef);
-}
-
-// Save generated avatar (single image from Gemini)
+// Save generated avatar - now receives a public URL from cloud function
 export async function saveGeneratedAvatar(
   userId: string,
   userDocId: string,
   imageUrl: string,
   selections: AvatarSelections
 ): Promise<{ avatarUrl: string }> {
-  const timestamp = Date.now();
-  const storagePath = `users/${userId}/ai-avatar/avatar_${timestamp}.png`;
-
-  let avatarUrl: string;
-
-  // Check if it's a data URL (from Gemini)
-  if (imageUrl.startsWith('data:')) {
-    const blob = dataURLtoBlob(imageUrl);
-    const storageRef = ref(storage, storagePath);
-    await uploadBytes(storageRef, blob);
-    avatarUrl = await getDownloadURL(storageRef);
-  } else {
-    avatarUrl = await uploadFromUrl(imageUrl, storagePath);
-  }
-
-  // Save to Firestore
+  // Cloud function already uploaded to Storage, imageUrl is a public URL
+  // Just save to Firestore
   await usersService.update(userDocId, {
-    aiAvatarPortraitUrl: avatarUrl,
+    aiAvatarPortraitUrl: imageUrl,
     aiAvatarSelections: selections,
   });
 
-  return { avatarUrl };
+  return { avatarUrl: imageUrl };
 }
