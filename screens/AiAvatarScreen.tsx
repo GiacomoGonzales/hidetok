@@ -95,23 +95,6 @@ const EXPRESSION_OPTIONS = [
   { id: 'mysterious', label: 'Misterioso' },
 ];
 
-const BACKGROUND_OPTIONS = [
-  { id: 'cafe', label: 'Café' },
-  { id: 'park', label: 'Parque' },
-  { id: 'city', label: 'Ciudad' },
-  { id: 'beach', label: 'Playa' },
-  { id: 'indoor', label: 'Interior' },
-  { id: 'sunset', label: 'Atardecer' },
-];
-
-const PHOTO_STYLE_OPTIONS = [
-  { id: 'natural', label: 'Natural' },
-  { id: 'cinematic', label: 'Cinemático' },
-  { id: 'editorial', label: 'Editorial' },
-  { id: 'vintage', label: 'Vintage' },
-  { id: 'moody', label: 'Dramático' },
-];
-
 const AiAvatarScreen: React.FC = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -123,7 +106,7 @@ const AiAvatarScreen: React.FC = () => {
   const hasAiAvatar = !!userProfile?.aiAvatarPortraitUrl && !showWizard;
 
   // Wizard step
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2>(1);
 
   // Selection state — Step 1 (Rostro base)
   const [selectedGender, setSelectedGender] = useState<string | null>(null);
@@ -137,10 +120,8 @@ const AiAvatarScreen: React.FC = () => {
   const [selectedFacialHair, setSelectedFacialHair] = useState<string | null>(null);
   const [selectedAccessories, setSelectedAccessories] = useState<string | null>(null);
 
-  // Selection state — Step 3 (Estilo de foto)
+  // Selection state — Step 2 (continued)
   const [selectedExpression, setSelectedExpression] = useState<string | null>(null);
-  const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
-  const [selectedPhotoStyle, setSelectedPhotoStyle] = useState<string | null>(null);
 
   const [generated, setGenerated] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -151,7 +132,6 @@ const AiAvatarScreen: React.FC = () => {
 
   const step1Complete = selectedGender && selectedSkinTone && selectedHairStyle && selectedAgeRange;
   const step2Complete = selectedEyeColor && selectedFaceShape && selectedExpression;
-  const step3Complete = selectedBackground && selectedPhotoStyle;
 
   const getSelections = () => ({
     gender: selectedGender!,
@@ -163,17 +143,14 @@ const AiAvatarScreen: React.FC = () => {
     facialHair: selectedFacialHair || 'none',
     accessories: selectedAccessories || 'none',
     expression: selectedExpression!,
-    background: selectedBackground!,
-    photoStyle: selectedPhotoStyle!,
   });
 
   const handleNextStep = () => {
     if (step === 1 && step1Complete) setStep(2);
-    else if (step === 2 && step2Complete) setStep(3);
   };
 
   const handleGenerate = async () => {
-    if (!step1Complete || !step2Complete || !step3Complete) return;
+    if (!step1Complete || !step2Complete) return;
     if (!user?.uid) {
       Alert.alert('Error', 'Debes iniciar sesión para generar un avatar.');
       return;
@@ -202,8 +179,52 @@ const AiAvatarScreen: React.FC = () => {
     setShowWizard(true);
   };
 
+  // Upload a custom photo as avatar
+  const handleUploadAvatar = async () => {
+    if (!user?.uid || !userProfile?.id) return;
+
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permiso requerido', 'Necesitamos acceso a la galería.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      allowsEditing: true,
+      aspect: [1, 1],
+      base64: true,
+    });
+    const asset = result.assets?.[0];
+    if (result.canceled || !asset?.uri) return;
+
+    setLoading(true);
+    setLoadingMessage('Subiendo foto...');
+    try {
+      const uploadedUrl = await uploadImageForSwap(user.uid, asset.uri, asset.base64);
+      await usersService.update(userProfile.id, {
+        photoURL: uploadedUrl,
+        aiAvatarPortraitUrl: uploadedUrl,
+      });
+      updateLocalProfile({
+        photoURL: uploadedUrl,
+        aiAvatarPortraitUrl: uploadedUrl,
+        avatarType: 'custom',
+      });
+      setGeneratedAvatarUrl(uploadedUrl);
+      setGenerated(true);
+      setShowWizard(false);
+    } catch (error: any) {
+      console.error('Error uploading avatar:', error);
+      Alert.alert('Error', 'No se pudo subir la foto. Intenta de nuevo.');
+    } finally {
+      setLoading(false);
+      setLoadingMessage('');
+    }
+  };
+
   const handleRegenerate = async () => {
-    if (!step1Complete || !step2Complete || !step3Complete) {
+    if (!step1Complete || !step2Complete) {
       setGenerated(false);
       setGeneratedAvatarUrl(null);
       setStep(1);
@@ -270,9 +291,9 @@ const AiAvatarScreen: React.FC = () => {
       }
       result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
-        quality: 0.8,
+        quality: 0.5,
         allowsEditing: true,
-        aspect: [1, 1],
+        aspect: [3, 4],
         base64: true,
       });
     } else {
@@ -283,9 +304,9 @@ const AiAvatarScreen: React.FC = () => {
       }
       result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        quality: 0.8,
+        quality: 0.5,
         allowsEditing: true,
-        aspect: [1, 1],
+        aspect: [3, 4],
         base64: true,
       });
     }
@@ -298,9 +319,7 @@ const AiAvatarScreen: React.FC = () => {
     try {
       const uploadedUrl = await uploadImageForSwap(user.uid, asset.uri, asset.base64);
       setLoadingMessage('Reemplazando persona por avatar con Gemini AI...\n(Esto puede tomar 30-60 segundos)');
-      // Pass avatar selections for better replacement quality
-      const selections = step1Complete && step2Complete && step3Complete ? getSelections() : undefined;
-      const generatedImageUrl = await performAvatarReplacement(uploadedUrl, avatarUrl, selections);
+      const generatedImageUrl = await performAvatarReplacement(uploadedUrl, avatarUrl);
       setLoadingMessage('Guardando resultado...');
       const savedUrl = await saveFaceSwapResult(user.uid, generatedImageUrl);
       setSwapResultUrl(savedUrl);
@@ -347,11 +366,11 @@ const AiAvatarScreen: React.FC = () => {
     }
   };
 
-  const STEP_LABELS = ['Base', 'Detalles', 'Estilo'];
+  const STEP_LABELS = ['Base', 'Detalles'];
 
   const renderStepIndicator = () => (
     <View style={styles.stepIndicator}>
-      {[1, 2, 3].map((s, i) => (
+      {[1, 2].map((s, i) => (
         <React.Fragment key={s}>
           {i > 0 && (
             <View
@@ -475,7 +494,7 @@ const AiAvatarScreen: React.FC = () => {
 
         {swapResultUrl && (
           <View style={styles.swapPreviewContainer}>
-            <Image source={{ uri: swapResultUrl }} style={styles.swapPreviewImage} resizeMode="cover" />
+            <Image source={{ uri: swapResultUrl }} style={styles.swapResultImage} resizeMode="contain" />
             <TouchableOpacity
               style={[styles.primaryButton, { backgroundColor: theme.colors.accent, marginTop: SPACING.md }]}
               onPress={async () => {
@@ -506,10 +525,19 @@ const AiAvatarScreen: React.FC = () => {
       <TouchableOpacity
         style={[styles.secondaryButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, marginTop: SPACING.lg }]}
         activeOpacity={0.7}
+        onPress={handleUploadAvatar}
+      >
+        <Ionicons name="image-outline" size={scale(18)} color={theme.colors.text} />
+        <Text style={[styles.secondaryButtonText, { color: theme.colors.text }]}>Subir otra foto como avatar</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.secondaryButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, marginTop: SPACING.sm }]}
+        activeOpacity={0.7}
         onPress={handleStartRegenerate}
       >
         <Ionicons name="refresh" size={scale(18)} color={theme.colors.text} />
-        <Text style={[styles.secondaryButtonText, { color: theme.colors.text }]}>Regenerar avatar</Text>
+        <Text style={[styles.secondaryButtonText, { color: theme.colors.text }]}>Regenerar avatar con IA</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -525,9 +553,21 @@ const AiAvatarScreen: React.FC = () => {
       <View style={[styles.disclaimerBanner, { backgroundColor: theme.colors.accent + '15', borderColor: theme.colors.accent + '30' }]}>
         <Ionicons name="information-circle-outline" size={scale(20)} color={theme.colors.accent} />
         <Text style={[styles.disclaimerText, { color: theme.colors.text }]}>
-          Crea un avatar humano generado por IA para tu perfil HIDI. Este avatar no se basa en tu foto real — es completamente ficticio y protege tu identidad.
+          Crea un avatar generado por IA o sube una foto para usar como avatar en tu perfil HIDI.
         </Text>
       </View>
+
+      {/* Upload custom photo option */}
+      {!generated && (
+        <TouchableOpacity
+          style={[styles.secondaryButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, marginBottom: SPACING.xxl }]}
+          activeOpacity={0.7}
+          onPress={handleUploadAvatar}
+        >
+          <Ionicons name="image-outline" size={scale(18)} color={theme.colors.text} />
+          <Text style={[styles.secondaryButtonText, { color: theme.colors.text }]}>Subir foto como avatar</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Step indicator */}
       {!generated && renderStepIndicator()}
@@ -679,62 +719,15 @@ const AiAvatarScreen: React.FC = () => {
                 <Text style={[styles.backLinkText, { color: theme.colors.accent }]}>Paso anterior</Text>
               </TouchableOpacity>
 
-              {/* Next button */}
+              {/* Generate button */}
               <TouchableOpacity
                 style={[styles.primaryButton, { backgroundColor: step2Complete ? theme.colors.accent : theme.colors.surface, opacity: step2Complete ? 1 : 0.5 }]}
-                onPress={handleNextStep}
+                onPress={handleGenerate}
                 disabled={!step2Complete}
                 activeOpacity={0.8}
               >
+                <Ionicons name="sparkles" size={scale(18)} color={step2Complete ? '#FFFFFF' : theme.colors.textSecondary} />
                 <Text style={[styles.primaryButtonText, { color: step2Complete ? '#FFFFFF' : theme.colors.textSecondary }]}>
-                  Siguiente
-                </Text>
-                <Ionicons name="arrow-forward" size={scale(18)} color={step2Complete ? '#FFFFFF' : theme.colors.textSecondary} />
-              </TouchableOpacity>
-            </>
-          )}
-
-          {step === 3 && (
-            <>
-              {/* Background */}
-              <View style={styles.sectionBlock}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Fondo / Ambiente</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                  {BACKGROUND_OPTIONS.map((opt) =>
-                    renderChip(opt.id, opt.label, selectedBackground === opt.id, () =>
-                      setSelectedBackground(opt.id),
-                    ),
-                  )}
-                </ScrollView>
-              </View>
-
-              {/* Photo style */}
-              <View style={styles.sectionBlock}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Estilo de foto</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                  {PHOTO_STYLE_OPTIONS.map((opt) =>
-                    renderChip(opt.id, opt.label, selectedPhotoStyle === opt.id, () =>
-                      setSelectedPhotoStyle(opt.id),
-                    ),
-                  )}
-                </ScrollView>
-              </View>
-
-              {/* Back link */}
-              <TouchableOpacity style={styles.backLink} onPress={() => setStep(2)} activeOpacity={0.7}>
-                <Ionicons name="arrow-back" size={scale(16)} color={theme.colors.accent} />
-                <Text style={[styles.backLinkText, { color: theme.colors.accent }]}>Paso anterior</Text>
-              </TouchableOpacity>
-
-              {/* Generate button */}
-              <TouchableOpacity
-                style={[styles.primaryButton, { backgroundColor: step3Complete ? theme.colors.accent : theme.colors.surface, opacity: step3Complete ? 1 : 0.5 }]}
-                onPress={handleGenerate}
-                disabled={!step3Complete}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="sparkles" size={scale(18)} color={step3Complete ? '#FFFFFF' : theme.colors.textSecondary} />
-                <Text style={[styles.primaryButtonText, { color: step3Complete ? '#FFFFFF' : theme.colors.textSecondary }]}>
                   Generar Avatar
                 </Text>
               </TouchableOpacity>
@@ -810,8 +803,8 @@ const AiAvatarScreen: React.FC = () => {
               <View style={styles.previewContainer}>
                 <Image
                   source={{ uri: swapResultUrl }}
-                  style={styles.previewImagePortrait}
-                  resizeMode="cover"
+                  style={styles.swapResultImage}
+                  resizeMode="contain"
                 />
               </View>
 
@@ -1154,6 +1147,11 @@ const styles = StyleSheet.create({
   swapPreviewImage: {
     width: scale(280),
     height: scale(280),
+    borderRadius: BORDER_RADIUS.lg,
+  },
+  swapResultImage: {
+    width: scale(260),
+    height: scale(400),
     borderRadius: BORDER_RADIUS.lg,
   },
   swapPreviewClose: {

@@ -2,10 +2,8 @@
 /**
  * Avatar Generation Cloud Functions
  *
- * Professional implementation using Vertex AI:
- * - Gemini 2.5 Flash for scene analysis
- * - Imagen 3 for avatar generation
- * - Gemini 2.5 Flash Image for person replacement (with Imagen 3 Edit fallback)
+ * - Gemini 2.5 Flash Image for avatar generation
+ * - Python Cloud Function (rembg + Imagen 3) for person replacement
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.avatarReplacement = exports.generateAvatarWithGemini = void 0;
@@ -77,11 +75,11 @@ exports.generateAvatarWithGemini = (0, https_1.onCall)({
  * Replaces a person in a photo with the user's avatar
  *
  * Pipeline:
- * 1. Analyze selfie with Gemini 1.5 Pro → JSON (pose, lighting, objects)
- * 2. Replace person using Imagen 3 Edit with avatar reference
+ * 1. Download both images
+ * 2. Send both to Gemini with a simple replacement prompt
  *
  * Input: selfieUrl, avatarUrl
- * Output: Base64 data URL of result
+ * Output: Public Storage URL of result
  */
 exports.avatarReplacement = (0, https_1.onCall)({
     region: 'us-central1',
@@ -92,7 +90,7 @@ exports.avatarReplacement = (0, https_1.onCall)({
     if (!request.auth) {
         throw new https_1.HttpsError('unauthenticated', 'Must be authenticated');
     }
-    const { selfieUrl, avatarUrl, avatarSelections } = request.data;
+    const { selfieUrl, avatarUrl } = request.data;
     if (!selfieUrl || typeof selfieUrl !== 'string') {
         throw new https_1.HttpsError('invalid-argument', 'selfieUrl is required');
     }
@@ -100,46 +98,22 @@ exports.avatarReplacement = (0, https_1.onCall)({
         throw new https_1.HttpsError('invalid-argument', 'avatarUrl is required');
     }
     console.log('═══════════════════════════════════════════════════════════');
-    console.log('     VERTEX AI AVATAR REPLACEMENT (Professional)           ');
+    console.log('     AVATAR REPLACEMENT (Gemini 2.5 Flash Image)          ');
     console.log('═══════════════════════════════════════════════════════════');
     console.log('Selfie URL:', selfieUrl.substring(0, 80) + '...');
     console.log('Avatar URL:', avatarUrl.substring(0, 80) + '...');
     const startTime = Date.now();
     try {
         // Step 1: Download images
-        console.log('\n[1/3] Downloading images...');
+        console.log('\n[1/2] Downloading images...');
         const [selfieData, avatarData] = await Promise.all([
             (0, vertexAI_1.urlToBase64)(selfieUrl),
             (0, vertexAI_1.urlToBase64)(avatarUrl),
         ]);
         console.log('    ✓ Images downloaded');
-        // Step 2: Analyze scene with Gemini 2.5 Flash
-        console.log('\n[2/3] Analyzing scene with Gemini 2.5 Flash...');
-        const sceneAnalysis = await (0, vertexAI_1.analyzeSceneWithGemini)(selfieData.base64, selfieData.mimeType);
-        console.log('    ✓ Scene analyzed:', JSON.stringify(sceneAnalysis, null, 2).substring(0, 200));
-        // Get avatar config from selections or use defaults
-        const avatarConfig = avatarSelections ? {
-            gender: avatarSelections.gender || 'male',
-            skinTone: mapSkinTone(avatarSelections.skinTone),
-            hairStyle: mapHairStyle(avatarSelections.hairStyle),
-            ageRange: mapAgeRange(avatarSelections.ageRange),
-            eyeColor: mapEyeColor(avatarSelections.eyeColor),
-            faceShape: mapFaceShape(avatarSelections.faceShape),
-            facialHair: mapFacialHair(avatarSelections.facialHair),
-            accessories: mapAccessories(avatarSelections.accessories),
-            expression: mapExpression(avatarSelections.expression),
-        } : {
-            gender: 'male',
-            skinTone: 'medium skin',
-            hairStyle: 'short hair',
-            ageRange: 'adult in their 30s',
-            eyeColor: 'brown eyes',
-            faceShape: 'oval face',
-            expression: 'natural expression',
-        };
-        // Step 3: Replace person with Gemini 2.5 Flash Image (fallback: Imagen 3 Edit)
-        console.log('\n[3/3] Replacing person with Gemini 2.5 Flash Image...');
-        const resultDataUrl = await (0, vertexAI_1.replacePersonWithAvatar)(selfieData.base64, selfieData.mimeType, avatarData.base64, avatarData.mimeType, sceneAnalysis, avatarConfig);
+        // Step 2: Replace person with Gemini 2.5 Flash Image
+        console.log('\n[2/2] Replacing person with Gemini 2.5 Flash Image...');
+        const resultDataUrl = await (0, vertexAI_1.replacePersonWithAvatar)(selfieData.base64, selfieData.mimeType, avatarData.base64, avatarData.mimeType);
         console.log('    ✓ Person replaced');
         // Upload result to Cloud Storage and return public URL
         const userId = request.auth.uid;

@@ -1,6 +1,5 @@
 import { httpsCallable } from 'firebase/functions';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
-import * as FileSystem from 'expo-file-system';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { functions, storage } from '../config/firebase';
 import { usersService } from './firestoreService';
 
@@ -16,8 +15,6 @@ interface AvatarSelections {
   facialHair: string;
   accessories: string;
   expression: string;
-  background: string;
-  photoStyle: string;
 }
 
 const GENDER_MAP: Record<string, string> = {
@@ -93,23 +90,6 @@ const EXPRESSION_MAP: Record<string, string> = {
   mysterious: 'enigmatic mysterious gaze',
 };
 
-const BACKGROUND_MAP: Record<string, string> = {
-  cafe: 'cozy coffee shop interior with warm lighting',
-  park: 'lush green park with trees and natural light',
-  city: 'urban city street with buildings in the background',
-  beach: 'sandy beach with ocean waves in the background',
-  indoor: 'modern minimalist room with soft natural window light',
-  sunset: 'golden hour sunset with warm orange and pink sky',
-};
-
-const PHOTO_STYLE_MAP: Record<string, string> = {
-  natural: 'natural iPhone selfie photo, no filters, realistic skin texture with pores and subtle imperfections',
-  cinematic: 'cinematic color grading, dramatic lighting, film grain, anamorphic lens flare',
-  editorial: 'high fashion editorial photography, sharp focus, magazine quality lighting',
-  vintage: 'vintage film photography, warm faded tones, soft grain, retro color palette',
-  moody: 'moody dramatic portrait, deep shadows, high contrast, desaturated tones',
-};
-
 function buildPortraitPrompt(selections: AvatarSelections): string {
   const gender = GENDER_MAP[selections.gender] || 'person';
   const skin = SKIN_TONE_MAP[selections.skinTone] || 'medium skin';
@@ -120,12 +100,10 @@ function buildPortraitPrompt(selections: AvatarSelections): string {
   const facialHair = FACIAL_HAIR_MAP[selections.facialHair] || '';
   const accessories = ACCESSORIES_MAP[selections.accessories] || '';
   const expression = EXPRESSION_MAP[selections.expression] || 'natural expression';
-  const background = BACKGROUND_MAP[selections.background] || 'blurred everyday location';
-  const style = PHOTO_STYLE_MAP[selections.photoStyle] || 'natural photo';
 
   const details = [face, facialHair, accessories].filter(Boolean).join(', ');
 
-  return `Casual selfie photo of a ${gender} ${age} with ${skin}, ${hair}, ${eyes}${details ? `, ${details}` : ''}. ${expression}, taken with a smartphone front camera, shot from slightly above at arm's length. Background: ${background}. ${style}, shallow depth of field, 4K quality.`;
+  return `Portrait photo of a ${gender} ${age} with ${skin}, ${hair}, ${eyes}${details ? `, ${details}` : ''}. ${expression}. Plain white background. Shot with a high-end smartphone camera. Photorealistic, natural skin texture with visible pores and subtle imperfections, natural lighting, no filters, no AI artifacts, 4K quality.`;
 }
 
 // --- API calls ---
@@ -156,40 +134,36 @@ export async function generateAvatarWithGemini(
 export async function performAvatarReplacement(
   selfieUrl: string,
   avatarUrl: string,
-  avatarSelections?: AvatarSelections
 ): Promise<string> {
   if (!functions) {
     throw new Error('Firebase functions not initialized');
   }
   console.log('Calling avatarReplacement cloud function...');
   const callable = httpsCallable<
-    { selfieUrl: string; avatarUrl: string; avatarSelections?: AvatarSelections },
+    { selfieUrl: string; avatarUrl: string },
     { imageUrl: string }
   >(functions, 'avatarReplacement', { timeout: 300_000 });
-  const result = await callable({ selfieUrl, avatarUrl, avatarSelections });
+  const result = await callable({ selfieUrl, avatarUrl });
   return result.data.imageUrl; // Returns public Storage URL
 }
 
 // --- Upload helpers ---
 
-// Upload selfie for face swap using base64 (no blobs)
+// Upload selfie for face swap using blob from local URI (React Native compatible)
 export async function uploadImageForSwap(
   userId: string,
   imageUri: string,
-  base64Data?: string | null
+  _base64Data?: string | null
 ): Promise<string> {
   const timestamp = Date.now();
   const storagePath = `users/${userId}/face-swap/source_${timestamp}.jpg`;
   const storageRef = ref(storage, storagePath);
 
-  let base64 = base64Data;
-  if (!base64) {
-    base64 = await FileSystem.readAsStringAsync(imageUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-  }
+  // fetch local file URI → blob (works reliably in React Native)
+  const response = await fetch(imageUri);
+  const blob = await response.blob();
 
-  await uploadString(storageRef, base64, 'base64', { contentType: 'image/jpeg' });
+  await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
   return getDownloadURL(storageRef);
 }
 

@@ -18,9 +18,13 @@
     "@google-cloud/storage": "^7.19.0",
     "@google/genai": "^1.40.0",
     "firebase-admin": "^12.7.0",
-    "firebase-functions": "^7.0.5"
+    "firebase-functions": "^7.0.5",
+    "sharp": "^0.34.5",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@types/sharp": "^0.31.1",
+    "@types/uuid": "^10.0.0",
     "firebase-functions-test": "^3.1.0",
     "typescript": "^5.3.0"
   },
