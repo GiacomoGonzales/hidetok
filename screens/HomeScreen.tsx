@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -326,11 +326,44 @@ const HomeScreen: React.FC = () => {
     }
   };
 
+  const handleVideoPress = useCallback((post: Post) => {
+    // Filter current feed posts to only videos
+    const videoPosts = posts.filter(p => !!p.videoUrl);
+    const parentNavigation = navigation.getParent();
+    if (parentNavigation) {
+      (parentNavigation as any).navigate('Reels', {
+        initialPost: post,
+        initialVideoPosts: videoPosts,
+        communitySlug: selectedCommunitySlug,
+      });
+    }
+  }, [posts, navigation, selectedCommunitySlug]);
+
   // Obtener las comunidades del usuario para el filtro
   const getUserCommunities = useCallback(() => {
     if (!userProfile?.joinedCommunities) return [];
     return officialCommunities.filter(c => c.id && userProfile.joinedCommunities.includes(c.id));
   }, [officialCommunities, userProfile?.joinedCommunities]);
+
+  // Calcular posts destacados por engagement (sin fetch extra)
+  const highlightedPosts = useMemo(() => {
+    if (posts.length < 3) return [];
+    const sorted = [...posts].sort((a, b) => {
+      const engA = (a.agreementCount || 0) + (a.comments || 0);
+      const engB = (b.agreementCount || 0) + (b.comments || 0);
+      return engB - engA;
+    });
+    return sorted.slice(0, 5);
+  }, [posts]);
+
+  const HIGHLIGHT_CARD_WIDTH = scale(260);
+  const HIGHLIGHT_CARD_GAP = SPACING.md;
+
+  const getHighlightLabel = (index: number): { emoji: string; label: string } => {
+    if (index === 0) return { emoji: '\uD83D\uDD25', label: 'Tema del día' };
+    if (index === 1) return { emoji: '\u2B50', label: 'Opinión destacada' };
+    return { emoji: '\uD83D\uDCCC', label: 'Destacado' };
+  };
 
   const handleCommunitySelect = (communitySlug: string | null) => {
     console.log('🎯 Community selected:', communitySlug);
@@ -412,6 +445,7 @@ const HomeScreen: React.FC = () => {
         onComment={handleComment}
         onPrivateMessage={handlePrivateMessage}
         onPress={handlePostPress}
+        onVideoPress={handleVideoPress}
         isVisible={visiblePostIds.has(item.id || '')}
       />
     </View>
@@ -484,6 +518,65 @@ const HomeScreen: React.FC = () => {
       {!isDesktop && !isUserCommunityFeed && (
         <View style={[styles.communityTabContainer, { borderBottomColor: theme.colors.border }]}>
           {renderCommunitySelector()}
+        </View>
+      )}
+      {/* Carrusel de destacados */}
+      {highlightedPosts.length > 0 && (
+        <View style={styles.highlightsSection}>
+          <Text style={[styles.highlightsSectionTitle, { color: theme.colors.text }]}>
+            Destacados
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={HIGHLIGHT_CARD_WIDTH + HIGHLIGHT_CARD_GAP}
+            decelerationRate="fast"
+            contentContainerStyle={styles.highlightsContainer}
+          >
+            {highlightedPosts.map((post, index) => {
+              const { emoji, label } = getHighlightLabel(index);
+              const totalVotes = (post.agreementCount || 0) + (post.disagreementCount || 0);
+              return (
+                <TouchableOpacity
+                  key={post.id || index}
+                  style={[
+                    styles.highlightCard,
+                    {
+                      backgroundColor: theme.colors.card,
+                      borderColor: theme.colors.border,
+                      width: HIGHLIGHT_CARD_WIDTH,
+                    },
+                  ]}
+                  activeOpacity={0.7}
+                  onPress={() => handlePostPress(post)}
+                >
+                  <Text style={styles.highlightLabel}>
+                    {emoji} {label}
+                  </Text>
+                  <Text
+                    style={[styles.highlightContent, { color: theme.colors.text }]}
+                    numberOfLines={2}
+                  >
+                    {post.content}
+                  </Text>
+                  <View style={styles.highlightStats}>
+                    <View style={styles.highlightStat}>
+                      <Ionicons name="thumbs-up-outline" size={scale(13)} color={theme.colors.textSecondary} />
+                      <Text style={[styles.highlightStatText, { color: theme.colors.textSecondary }]}>
+                        {totalVotes}
+                      </Text>
+                    </View>
+                    <View style={styles.highlightStat}>
+                      <Ionicons name="chatbubble-outline" size={scale(13)} color={theme.colors.textSecondary} />
+                      <Text style={[styles.highlightStatText, { color: theme.colors.textSecondary }]}>
+                        {post.comments || 0}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
       )}
       {/* Indicador de filtrado */}
@@ -691,6 +784,53 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.lg,
+  },
+  highlightsSection: {
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+  },
+  highlightsSectionTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+    letterSpacing: -0.3,
+  },
+  highlightsContainer: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.md,
+  },
+  highlightCard: {
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    padding: SPACING.lg,
+    justifyContent: 'space-between',
+  },
+  highlightLabel: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.semibold,
+    marginBottom: SPACING.sm,
+    letterSpacing: 0.3,
+  },
+  highlightContent: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.regular,
+    lineHeight: scale(18),
+    marginBottom: SPACING.md,
+  },
+  highlightStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.lg,
+  },
+  highlightStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  highlightStatText: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.medium,
   },
   postContainer: {
     paddingHorizontal: SPACING.lg,
