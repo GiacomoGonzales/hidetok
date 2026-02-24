@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npx expo export -p web && cp -r public/* dist/",
+  "buildCommand": "npx expo export -p web && cp public/privacy-policy.html public/support.html public/terms.html public/landing.html dist/",
   "outputDirectory": "dist",
   "rewrites": [
     {
