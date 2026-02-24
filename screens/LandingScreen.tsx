@@ -573,8 +573,27 @@ const LandingScreen: React.FC = () => {
     }
   }, [activeTab, hidsScrollTarget, containerHeight]);
 
-  // Video posts for Hids tab
-  const videoPosts = useMemo(() => feedPosts.filter(p => !!p.videoUrl), [feedPosts]);
+  // Video posts for Hids tab (loaded independently)
+  const [videoPosts, setVideoPosts] = useState<Post[]>([]);
+  const [videoLastDoc, setVideoLastDoc] = useState<DocumentSnapshot | null>(null);
+  const [videosLoading, setVideosLoading] = useState(false);
+
+  const loadVideoPosts = useCallback(async () => {
+    setVideosLoading(true);
+    try {
+      const result = await postsService.getVideoPostsPaginated(15);
+      setVideoPosts(result.documents);
+      setVideoLastDoc(result.lastDoc);
+    } catch (error) {
+      console.error('Error loading video posts:', error);
+    } finally {
+      setVideosLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadVideoPosts();
+  }, []);
 
   // Hero carousel phrases
   const HERO_PHRASES = useRef([
