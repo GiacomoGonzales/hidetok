@@ -18,10 +18,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { useResponsive } from '../hooks/useResponsive';
 import { postsService } from '../services/firestoreService';
-import { uploadPostImage, uploadPostVideo } from '../services/storageService';
+import { uploadPostImage } from '../services/storageService';
+import { uploadVideoToCloudinary } from '../services/cloudinaryService';
 import { performAvatarReplacement, uploadImageForSwap, saveFaceSwapResult } from '../services/avatarGenerationService';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
+import { Video, ResizeMode } from 'expo-av';
 import { useNavigation } from '@react-navigation/native';
 import { Timestamp } from 'firebase/firestore';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS } from '../constants/design';
@@ -32,6 +34,7 @@ interface MediaItem {
   type: 'image' | 'video';
   uri: string;
   id: string;
+  aspectRatio?: number; // width / height
 }
 
 interface PollOption {
@@ -229,6 +232,7 @@ const CreateScreen: React.FC = () => {
         selectionLimit: hasVideo ? 0 : maxImages - attachedMedia.length,
         quality: 0.8,
         aspect: [1, 1],
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
       });
 
       if (!result.canceled && result.assets) {
@@ -259,10 +263,12 @@ const CreateScreen: React.FC = () => {
               Alert.alert('No disponible', 'No puedes agregar imágenes si ya tienes un video adjunto');
               continue;
             }
+            const ar = asset.width && asset.height ? asset.width / asset.height : undefined;
             newMedia.push({
               id: `image_${Date.now()}_${index}`,
               type: 'image' as const,
               uri: asset.uri,
+              aspectRatio: ar,
             });
           }
         }
@@ -299,10 +305,13 @@ const CreateScreen: React.FC = () => {
       });
 
       if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const ar = asset.width && asset.height ? asset.width / asset.height : undefined;
         const newMedia: MediaItem = {
           id: `photo_${Date.now()}`,
           type: 'image',
-          uri: result.assets[0].uri,
+          uri: asset.uri,
+          aspectRatio: ar,
         };
 
         setAttachedMedia(prev => [...prev, newMedia]);
@@ -349,25 +358,16 @@ const CreateScreen: React.FC = () => {
         const isVideoPost = attachedMedia[0].type === 'video';
 
         if (isVideoPost) {
-          // Subir video
+          // Subir video a Cloudinary (comprime y sirve por CDN)
           const media = attachedMedia[0];
           try {
-            console.log('📹 Subiendo video...');
-            const response = await fetch(media.uri);
-            if (!response.ok) {
-              throw new Error(`Error al obtener el video: ${response.status} ${response.statusText}`);
-            }
-            const blob = await response.blob();
-            console.log('✅ Blob de video creado, tamaño:', blob.size, 'bytes');
-
-            videoUrl = await uploadPostVideo(
-              blob,
-              user.uid,
+            console.log('📹 Subiendo video a Cloudinary...');
+            videoUrl = await uploadVideoToCloudinary(
+              media.uri,
               (progress) => {
-                console.log(`📊 Progreso video:`, progress.progress.toFixed(1) + '%');
                 setUploadProgress(prev => ({
                   ...prev,
-                  [media.id]: progress.progress
+                  [media.id]: progress
                 }));
               }
             );
@@ -430,12 +430,18 @@ const CreateScreen: React.FC = () => {
       const hashtags = detectHashtags(postText);
       console.log('🏷️ Hashtags encontrados:', hashtags);
 
+      // Calcular aspect ratios de las imágenes adjuntas
+      const imageAspectRatios = attachedMedia
+        .filter(m => m.type === 'image')
+        .map(m => m.aspectRatio || 4 / 3);
+
       // Crear el post en Firestore (usar uid del perfil activo)
       const postData: any = {
         userId: userProfile?.uid || user.uid,
         content: postText.trim(),
         imageUrls,
         imageUrlsThumbnails: thumbnailUrls,
+        ...(imageUrls.length > 0 ? { imageAspectRatios } : {}),
         ...(videoUrl ? { videoUrl } : {}),
         likes: 0,
         comments: 0,
@@ -519,17 +525,25 @@ const CreateScreen: React.FC = () => {
                 borderColor: theme.colors.border,
               }
             ]}>
-              <Image
-                source={{ uri: media.uri }}
-                style={styles.mediaPreviewImage}
-                resizeMode="cover"
-              />
-
-              {/* Indicador de tipo de media */}
-              {media.type === 'video' && (
-                <View style={styles.videoIndicator}>
-                  <Ionicons name="play" size={scale(20)} color="white" />
-                </View>
+              {media.type === 'video' ? (
+                <>
+                  <Video
+                    source={{ uri: media.uri }}
+                    style={styles.mediaPreviewImage}
+                    resizeMode={ResizeMode.COVER}
+                    shouldPlay={false}
+                    isMuted
+                  />
+                  <View style={styles.videoIndicator}>
+                    <Ionicons name="play" size={scale(20)} color="white" />
+                  </View>
+                </>
+              ) : (
+                <Image
+                  source={{ uri: media.uri }}
+                  style={styles.mediaPreviewImage}
+                  resizeMode="cover"
+                />
               )}
 
               {/* Botón de eliminar */}
@@ -895,6 +909,34 @@ const CreateScreen: React.FC = () => {
         </View>
       </KeyboardAvoidingView>
 
+      {/* Video upload progress overlay */}
+      {isPublishing && attachedMedia.some(m => m.type === 'video') && (
+        <View style={styles.faceSwapOverlay}>
+          <View style={[styles.faceSwapLoadingBox, { backgroundColor: theme.colors.surface }]}>
+            <ActivityIndicator size="large" color={theme.colors.accent} />
+            <Text style={[styles.faceSwapLoadingText, { color: theme.colors.text }]}>
+              Subiendo video...
+            </Text>
+            {Object.values(uploadProgress).length > 0 && (
+              <View style={styles.uploadProgressBar}>
+                <View
+                  style={[
+                    styles.uploadProgressFill,
+                    {
+                      backgroundColor: theme.colors.accent,
+                      width: `${Math.max(Object.values(uploadProgress)[0] || 0, 5)}%`,
+                    },
+                  ]}
+                />
+              </View>
+            )}
+            <Text style={[styles.faceSwapLoadingText, { color: theme.colors.textSecondary, fontSize: scale(12) }]}>
+              {Math.round(Object.values(uploadProgress)[0] || 0)}%
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Face swap loading overlay */}
       {faceSwapLoading && (
         <View style={styles.faceSwapOverlay}>
@@ -1150,6 +1192,18 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.sm,
     fontWeight: FONT_WEIGHT.medium,
     textAlign: 'center',
+  },
+  uploadProgressBar: {
+    width: '100%',
+    height: scale(6),
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    borderRadius: scale(3),
+    overflow: 'hidden',
+    marginTop: SPACING.sm,
+  },
+  uploadProgressFill: {
+    height: '100%',
+    borderRadius: scale(3),
   },
 });
 

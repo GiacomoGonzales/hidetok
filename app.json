@@ -88,9 +88,9 @@
     "web": {
       "bundler": "metro",
       "favicon": "./assets/favicon.png",
-      "name": "HideTok - Red Social Anónima",
+      "name": "HideTok - La comunidad del futuro",
       "shortName": "HideTok",
-      "description": "Comparte de forma anónima con HideTok",
+      "description": "Comparte de forma real y anónima con HideTok. Crea tu alter ego digital, opina libremente y conecta con una comunidad sin filtros.",
       "backgroundColor": "#0A0A0A",
       "themeColor": "#8B5CF6",
       "orientation": "portrait-primary"

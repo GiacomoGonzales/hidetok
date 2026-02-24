@@ -2,6 +2,14 @@ import { Platform } from 'react-native';
 import imageCompression from 'browser-image-compression';
 import * as ImageManipulator from 'expo-image-manipulator';
 
+// Carga condicional: react-native-compressor no funciona en Expo Go
+let VideoCompressor: any = null;
+try {
+  VideoCompressor = require('react-native-compressor').Video;
+} catch {
+  console.log('⚠️ react-native-compressor no disponible (Expo Go). Videos se subirán sin comprimir.');
+}
+
 export interface ImageOptimizationOptions {
   maxSizeMB?: number;
   maxWidthOrHeight?: number;
@@ -178,4 +186,43 @@ export const blobToDataURL = (blob: Blob): Promise<string> => {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+};
+
+/**
+ * Comprime video para posts usando react-native-compressor
+ * Reduce resolución a 720p y bitrate para subida rápida y reproducción fluida
+ * Retorna la URI del video comprimido
+ */
+export const compressPostVideo = async (
+  uri: string,
+  onProgress?: (progress: number) => void
+): Promise<string> => {
+  // Sin compresión en web o si la librería no está disponible (Expo Go)
+  if (Platform.OS === 'web' || !VideoCompressor) {
+    console.log('⚠️ Compresión de video no disponible, subiendo original');
+    onProgress?.(100);
+    return uri;
+  }
+
+  try {
+    console.log('📹 Comprimiendo video...');
+    const startTime = Date.now();
+
+    const compressedUri = await VideoCompressor.compress(uri, {
+      compressionMethod: 'auto',
+      maxSize: 720,
+      bitrate: 2_000_000, // 2 Mbps — buena calidad para móvil
+    }, (progress: number) => {
+      onProgress?.(progress * 100);
+    });
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`✅ Video comprimido en ${elapsed}s:`, compressedUri);
+
+    return compressedUri;
+  } catch (error) {
+    console.error('❌ Error comprimiendo video:', error);
+    onProgress?.(100);
+    return uri;
+  }
 };

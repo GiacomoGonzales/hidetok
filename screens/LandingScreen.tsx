@@ -32,6 +32,7 @@ import { DocumentSnapshot } from 'firebase/firestore';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
 import PostCard from '../components/PostCard';
 import Header from '../components/Header';
+import DrawerMenu from '../components/DrawerMenu';
 import { useUserById } from '../hooks/useUserById';
 import { useVote } from '../hooks/useVote';
 import { formatNumber, getRelativeTime } from '../data/mockData';
@@ -519,10 +520,12 @@ const LandingScreen: React.FC = () => {
   const hidsListRef = useRef<FlatList>(null);
   const [hidsScrollTarget, setHidsScrollTarget] = useState<number | null>(null);
   const [hidsReady, setHidsReady] = useState(true);
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
   // Sticky tabs tracking with smooth animation
   const tabsOffsetY = useRef(0);
   const isTabsStickyRef = useRef(false);
+  const [isTabsSticky, setIsTabsSticky] = useState(false);
   const stickyAnim = useRef(new Animated.Value(0)).current;
   const prevTabRef = useRef(activeTab);
 
@@ -531,6 +534,7 @@ const LandingScreen: React.FC = () => {
     const shouldStick = y >= tabsOffsetY.current && tabsOffsetY.current > 0;
     if (shouldStick !== isTabsStickyRef.current) {
       isTabsStickyRef.current = shouldStick;
+      setIsTabsSticky(shouldStick);
       Animated.timing(stickyAnim, {
         toValue: shouldStick ? 1 : 0,
         duration: 200,
@@ -574,43 +578,24 @@ const LandingScreen: React.FC = () => {
 
   // Hero carousel phrases
   const HERO_PHRASES = useRef([
-    { title: 'Tu voz importa', subtitle: 'Opina sin miedo. Comparte ideas.\nConecta con personas reales.' },
-    { title: 'Exprésate libremente', subtitle: 'Di lo que piensas. Sin filtros.\nTu opinión tiene valor.' },
-    { title: 'Sé auténtico', subtitle: 'Muestra quién eres realmente.\nAquí no hay máscaras.' },
-    { title: 'Debate sin límites', subtitle: 'Defiende tus ideas. Escucha otras.\nCrece en cada conversación.' },
-    { title: 'Tu opinión cuenta', subtitle: 'Cada voto cambia la conversación.\nHaz que tu voz se escuche.' },
+    { title: 'Crea tu alter ego digital H.I.D.I', subtitle: 'Hidden Identity Digital Interface' },
+    { title: 'Exprésate libremente', subtitle: 'Opina. Publica. Conecta.' },
+    { title: 'Tu voz importa', subtitle: 'Debate sin filtros. Sé auténtico.' },
   ]).current;
 
   const [heroIndex, setHeroIndex] = useState(0);
-  const heroFadeAnim = useRef(new Animated.Value(1)).current;
-  const heroSlideAnim = useRef(new Animated.Value(0)).current;
+  const HERO_INNER_WIDTH = SCREEN_WIDTH - SPACING.lg * 2;
   const bgDriftX = useRef(new Animated.Value(0)).current;
   const bgDriftY = useRef(new Animated.Value(0)).current;
   const bgScale = useRef(new Animated.Value(1)).current;
 
-  // Text carousel - horizontal slide, faster
-  // Fix: wait for React to re-render with new text (at opacity 0) before fading in
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Fade out + slide left
-      Animated.parallel([
-        Animated.timing(heroFadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(heroSlideAnim, { toValue: -30, duration: 200, useNativeDriver: true }),
-      ]).start(() => {
-        // Update index & reset position while invisible
-        setHeroIndex(prev => (prev + 1) % HERO_PHRASES.length);
-        heroSlideAnim.setValue(30);
-        // Wait for React render to flush the new text before fading in
-        setTimeout(() => {
-          Animated.parallel([
-            Animated.timing(heroFadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-            Animated.timing(heroSlideAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-          ]).start();
-        }, 60);
-      });
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
+  const handleHeroScroll = useCallback((event: any) => {
+    const x = event.nativeEvent.contentOffset.x;
+    const index = Math.round(x / HERO_INNER_WIDTH);
+    if (index >= 0 && index < HERO_PHRASES.length) {
+      setHeroIndex(index);
+    }
+  }, [HERO_INNER_WIDTH]);
 
   // Background constellation drift - slow floating movement
   useEffect(() => {
@@ -862,7 +847,7 @@ const LandingScreen: React.FC = () => {
   };
 
   const renderHero = () => {
-    const currentPhrase = HERO_PHRASES[heroIndex];
+    const slideHeight = scale(120);
     return (
       <View style={styles.heroWrapper}>
         <LinearGradient
@@ -871,7 +856,7 @@ const LandingScreen: React.FC = () => {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
-          {/* Constellation pattern - animated background */}
+          {/* Constellation pattern */}
           <Animated.View style={[styles.constellationLayer, {
             transform: [
               { translateX: bgDriftX },
@@ -879,59 +864,59 @@ const LandingScreen: React.FC = () => {
               { scale: bgScale },
             ],
           }]}>
-            {/* Large glowing dots */}
-            <View style={[styles.constellationDot, styles.dotLg, { top: '15%', left: '10%', opacity: 0.5 }]} />
-            <View style={[styles.constellationDot, styles.dotLg, { top: '25%', right: '15%', opacity: 0.4 }]} />
-            <View style={[styles.constellationDot, styles.dotLg, { bottom: '20%', left: '25%', opacity: 0.35 }]} />
-            <View style={[styles.constellationDot, styles.dotLg, { bottom: '30%', right: '10%', opacity: 0.45 }]} />
-            {/* Medium dots */}
-            <View style={[styles.constellationDot, styles.dotMd, { top: '40%', left: '5%', opacity: 0.3 }]} />
-            <View style={[styles.constellationDot, styles.dotMd, { top: '10%', left: '45%', opacity: 0.35 }]} />
-            <View style={[styles.constellationDot, styles.dotMd, { top: '55%', right: '25%', opacity: 0.25 }]} />
-            <View style={[styles.constellationDot, styles.dotMd, { bottom: '10%', right: '40%', opacity: 0.3 }]} />
-            <View style={[styles.constellationDot, styles.dotMd, { top: '30%', left: '35%', opacity: 0.2 }]} />
-            {/* Small dots */}
-            <View style={[styles.constellationDot, styles.dotSm, { top: '20%', left: '30%', opacity: 0.4 }]} />
-            <View style={[styles.constellationDot, styles.dotSm, { top: '50%', left: '15%', opacity: 0.3 }]} />
-            <View style={[styles.constellationDot, styles.dotSm, { top: '35%', right: '30%', opacity: 0.35 }]} />
-            <View style={[styles.constellationDot, styles.dotSm, { bottom: '15%', left: '50%', opacity: 0.25 }]} />
-            <View style={[styles.constellationDot, styles.dotSm, { top: '60%', right: '8%', opacity: 0.3 }]} />
-            <View style={[styles.constellationDot, styles.dotSm, { top: '8%', right: '35%', opacity: 0.2 }]} />
-            <View style={[styles.constellationDot, styles.dotSm, { bottom: '35%', left: '8%', opacity: 0.3 }]} />
-            {/* Connecting lines */}
-            <View style={[styles.constellationLine, { top: '18%', left: '12%', width: scale(60), transform: [{ rotate: '25deg' }], opacity: 0.15 }]} />
-            <View style={[styles.constellationLine, { top: '30%', right: '18%', width: scale(45), transform: [{ rotate: '-15deg' }], opacity: 0.12 }]} />
-            <View style={[styles.constellationLine, { bottom: '25%', left: '28%', width: scale(70), transform: [{ rotate: '40deg' }], opacity: 0.1 }]} />
-            <View style={[styles.constellationLine, { top: '45%', left: '8%', width: scale(35), transform: [{ rotate: '-30deg' }], opacity: 0.12 }]} />
-            <View style={[styles.constellationLine, { top: '12%', left: '46%', width: scale(50), transform: [{ rotate: '60deg' }], opacity: 0.1 }]} />
+            <View style={[styles.constellationDot, styles.dotLg, { top: '15%', left: '5%', opacity: 0.5 }]} />
+            <View style={[styles.constellationDot, styles.dotLg, { bottom: '20%', left: '15%', opacity: 0.35 }]} />
+            <View style={[styles.constellationDot, styles.dotMd, { top: '40%', left: '3%', opacity: 0.3 }]} />
+            <View style={[styles.constellationDot, styles.dotSm, { top: '20%', left: '20%', opacity: 0.4 }]} />
+            <View style={[styles.constellationDot, styles.dotSm, { top: '55%', left: '10%', opacity: 0.3 }]} />
           </Animated.View>
 
-          {/* Content */}
-          <View style={styles.heroContent}>
-            {/* Chat icon */}
-            <View style={styles.heroChatIcon}>
-              <Ionicons name="chatbubbles" size={scale(22)} color="white" />
-            </View>
+          {/* Native paginated carousel */}
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleHeroScroll}
+            scrollEventThrottle={100}
+            nestedScrollEnabled
+            style={{ zIndex: 1 }}
+          >
+            {HERO_PHRASES.map((phrase, i) => (
+              <View key={i} style={[styles.heroSlide, { width: HERO_INNER_WIDTH, height: slideHeight }]}>
+                {i === 0 ? (
+                  <View style={styles.heroSlideRow}>
+                    <View style={styles.heroTextArea}>
+                      <Text style={styles.heroTitle}>{phrase.title}</Text>
+                      <Text style={styles.heroSubtitleFirst}>{phrase.subtitle}</Text>
+                    </View>
+                    <Image
+                      source={{ uri: 'https://res.cloudinary.com/dnrj1guvs/image/upload/w_300,h_300,c_fit,q_auto,f_png/app-assets/fz5k4rjfyjgy3ryfo8v0.png' }}
+                      style={styles.heroImage}
+                      contentFit="contain"
+                      cachePolicy="memory-disk"
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.heroSlideCenter}>
+                    <Text style={styles.heroTitleCentered}>{phrase.title}</Text>
+                    <Text style={styles.heroSubtitleCentered}>{phrase.subtitle}</Text>
+                  </View>
+                )}
+              </View>
+            ))}
+          </ScrollView>
 
-            {/* Animated title - horizontal slide */}
-            <Animated.Text
-              style={[
-                styles.heroTitle,
-                { opacity: heroFadeAnim, transform: [{ translateX: heroSlideAnim }] },
-              ]}
-            >
-              {currentPhrase.title}
-            </Animated.Text>
-
-            {/* Animated subtitle - horizontal slide */}
-            <Animated.Text
-              style={[
-                styles.heroSubtitle,
-                { opacity: heroFadeAnim, transform: [{ translateX: heroSlideAnim }] },
-              ]}
-            >
-              {currentPhrase.subtitle}
-            </Animated.Text>
+          {/* Dot indicators */}
+          <View style={styles.heroDots}>
+            {HERO_PHRASES.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.heroDot,
+                  index === heroIndex && styles.heroDotActive,
+                ]}
+              />
+            ))}
           </View>
         </LinearGradient>
       </View>
@@ -1315,7 +1300,7 @@ const LandingScreen: React.FC = () => {
     >
       {/* Header in normal flow (only for Flow mode) */}
       {!isHidsMode && (
-        <Header onNotificationsPress={handleNotificationsPress} />
+        <Header onNotificationsPress={handleNotificationsPress} onMenuPress={() => setDrawerVisible(true)} />
       )}
 
       {/* Content area */}
@@ -1383,6 +1368,7 @@ const LandingScreen: React.FC = () => {
         {/* Sticky tab bar — only in Flow mode, slides in when scrolled past inline tabs */}
         {!isHidsMode && (
           <Animated.View
+            pointerEvents={isTabsSticky ? 'auto' : 'none'}
             style={[
               styles.tabBarStickyWrapper,
               {
@@ -1405,10 +1391,13 @@ const LandingScreen: React.FC = () => {
       {/* Hids mode: transparent Header + Tabs overlay */}
       {isHidsMode && (
         <View style={styles.hidsOverlay} pointerEvents="box-none">
-          <Header onNotificationsPress={handleNotificationsPress} transparent />
+          <Header onNotificationsPress={handleNotificationsPress} onMenuPress={() => setDrawerVisible(true)} transparent />
           {renderTabBar(true)}
         </View>
       )}
+
+      {/* Drawer menu */}
+      <DrawerMenu visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </View>
   );
 };
@@ -1440,11 +1429,8 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   heroContainer: {
-    paddingHorizontal: SPACING.xl,
-    paddingTop: scale(15),
-    paddingBottom: scale(14),
     borderRadius: BORDER_RADIUS.xl,
-    minHeight: scale(112),
+    height: scale(120),
     overflow: 'hidden',
   },
   constellationLayer: {
@@ -1473,33 +1459,83 @@ const styles = StyleSheet.create({
     height: scale(1),
     backgroundColor: 'rgba(167, 139, 250, 0.5)',
   },
-  heroContent: {
-    alignItems: 'center',
-    zIndex: 1,
+  heroSlide: {
+    justifyContent: 'center',
   },
-  heroChatIcon: {
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(12),
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  heroSlideRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: SPACING.lg,
+  },
+  heroSlideCenter: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+  },
+  heroTextArea: {
+    flex: 1,
+    paddingRight: SPACING.sm,
+  },
+  heroImage: {
+    position: 'absolute',
+    right: -scale(8),
+    bottom: 0,
+    width: scale(100),
+    height: scale(100),
   },
   heroTitle: {
-    fontSize: scale(26),
+    fontSize: scale(16),
+    fontWeight: FONT_WEIGHT.bold,
+    color: 'white',
+    marginBottom: scale(4),
+    letterSpacing: -0.3,
+  },
+  heroTitleCentered: {
+    fontSize: scale(20),
     fontWeight: FONT_WEIGHT.bold,
     color: 'white',
     textAlign: 'center',
-    marginBottom: SPACING.sm,
-    letterSpacing: -0.5,
+    marginBottom: scale(4),
+    letterSpacing: -0.3,
+  },
+  heroSubtitleFirst: {
+    fontSize: scale(11),
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: scale(1),
+    marginTop: scale(2),
   },
   heroSubtitle: {
-    fontSize: scale(14),
-    fontWeight: FONT_WEIGHT.regular,
+    fontSize: scale(10),
+    color: 'rgba(255,255,255,0.8)',
+    lineHeight: scale(14),
+  },
+  heroSubtitleCentered: {
+    fontSize: scale(12),
     color: 'rgba(255,255,255,0.8)',
     textAlign: 'center',
-    lineHeight: scale(20),
+    lineHeight: scale(16),
+  },
+  heroDots: {
+    position: 'absolute',
+    bottom: scale(6),
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: scale(5),
+    zIndex: 2,
+  },
+  heroDot: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  heroDotActive: {
+    backgroundColor: 'white',
+    width: scale(18),
   },
 
   // Categories

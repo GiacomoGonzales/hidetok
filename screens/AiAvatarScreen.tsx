@@ -204,10 +204,12 @@ const AiAvatarScreen: React.FC = () => {
       const uploadedUrl = await uploadImageForSwap(user.uid, asset.uri, asset.base64);
       await usersService.update(userProfile.id, {
         photoURL: uploadedUrl,
+        photoURLThumbnail: uploadedUrl,
         aiAvatarPortraitUrl: uploadedUrl,
       });
       updateLocalProfile({
         photoURL: uploadedUrl,
+        photoURLThumbnail: uploadedUrl,
         aiAvatarPortraitUrl: uploadedUrl,
         avatarType: 'custom',
       });
@@ -258,9 +260,10 @@ const AiAvatarScreen: React.FC = () => {
         getSelections(),
       );
       // Also set as profile photo when skipping face swap
-      await usersService.update(userProfile.id, { photoURL: avatarUrl });
+      await usersService.update(userProfile.id, { photoURL: avatarUrl, photoURLThumbnail: avatarUrl });
       updateLocalProfile({
         photoURL: avatarUrl,
+        photoURLThumbnail: avatarUrl,
         aiAvatarPortraitUrl: avatarUrl,
         aiAvatarSelections: getSelections(),
         avatarType: 'custom',
@@ -349,9 +352,11 @@ const AiAvatarScreen: React.FC = () => {
       // Update profile with the swap result as photoURL
       await usersService.update(userProfile.id, {
         photoURL: swapResultUrl,
+        photoURLThumbnail: swapResultUrl,
       });
       updateLocalProfile({
         photoURL: swapResultUrl,
+        photoURLThumbnail: swapResultUrl,
         aiAvatarPortraitUrl: avatarUrl,
         aiAvatarSelections: getSelections(),
         avatarType: 'custom',
@@ -502,8 +507,8 @@ const AiAvatarScreen: React.FC = () => {
                 setLoading(true);
                 setLoadingMessage('Actualizando foto de perfil...');
                 try {
-                  await usersService.update(userProfile.id, { photoURL: swapResultUrl });
-                  updateLocalProfile({ photoURL: swapResultUrl });
+                  await usersService.update(userProfile.id, { photoURL: swapResultUrl, photoURLThumbnail: swapResultUrl });
+                  updateLocalProfile({ photoURL: swapResultUrl, photoURLThumbnail: swapResultUrl });
                   setSwapResultUrl(null);
                   Alert.alert('Listo', 'Tu foto de perfil ha sido actualizada.');
                 } catch (e: any) {

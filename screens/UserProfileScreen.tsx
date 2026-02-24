@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -145,6 +145,16 @@ const UserProfileScreen: React.FC = () => {
     navigation.navigate('PostDetail', { post });
   };
 
+  const handleVideoPress = useCallback((post: Post, positionMillis?: number) => {
+    const videoPosts = userPosts.filter(p => !!p.videoUrl);
+    (navigation as any).navigate('Reels', {
+      initialPost: post,
+      initialVideoPosts: videoPosts,
+      communitySlug: null,
+      initialPositionMillis: positionMillis,
+    });
+  }, [userPosts, navigation]);
+
   // Abrir visor de foto de perfil
   const handleAvatarLongPress = () => {
     if (userProfile?.avatarType === 'custom' && userProfile?.photoURL) {
@@ -261,6 +271,7 @@ const UserProfileScreen: React.FC = () => {
       onComment={handleComment}
       onPrivateMessage={handlePrivateMessage}
       onPress={handlePostPress}
+      onVideoPress={handleVideoPress}
     />
   );
 

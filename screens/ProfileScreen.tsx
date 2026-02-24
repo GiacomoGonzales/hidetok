@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import { likesService } from '../services/likesService';
 import { formatNumber } from '../data/mockData';
 import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import Header from '../components/Header';
+import DrawerMenu from '../components/DrawerMenu';
 import AvatarPicker, { isDiceBearUrl } from '../components/avatars/AvatarPicker';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
 import PostCard from '../components/PostCard';
@@ -59,6 +60,7 @@ const ProfileScreen: React.FC = () => {
   const [showAvatarViewer, setShowAvatarViewer] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const currentScrollPosition = useRef(0);
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
   useEffect(() => {
     const keyboardWillShowListener = Keyboard.addListener(
@@ -363,6 +365,16 @@ const ProfileScreen: React.FC = () => {
     (navigation as any).navigate('PostDetail', { post });
   };
 
+  const handleVideoPress = useCallback((post: Post, positionMillis?: number) => {
+    const videoPosts = userPosts.filter(p => !!p.videoUrl);
+    (navigation as any).navigate('Reels', {
+      initialPost: post,
+      initialVideoPosts: videoPosts,
+      communitySlug: null,
+      initialPositionMillis: positionMillis,
+    });
+  }, [userPosts, navigation]);
+
   // Abrir visor de foto de perfil
   const handleAvatarLongPress = () => {
     // Solo abrir si hay una foto personalizada
@@ -428,6 +440,8 @@ const ProfileScreen: React.FC = () => {
         onComment={handleComment}
         onPrivateMessage={handlePrivateMessage}
         onPress={handlePostPress}
+        onVideoPress={handleVideoPress}
+        isVisible={false}
       />
     </View>
   );
@@ -562,6 +576,7 @@ const ProfileScreen: React.FC = () => {
           {!isDesktop && (
             <Header
               onNotificationsPress={handleNotificationsPress}
+              onMenuPress={() => setDrawerVisible(true)}
             />
           )}
 
@@ -845,6 +860,9 @@ const ProfileScreen: React.FC = () => {
           onClose={() => setShowAvatarViewer(false)}
         />
       )}
+
+      {/* Drawer menu */}
+      <DrawerMenu visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </View>
   );
 };

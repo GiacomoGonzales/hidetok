@@ -107,6 +107,14 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
           console.log('📥 [UserProfileContext] Perfil real cargado:', profile.displayName);
         }
 
+        // Auto-fix: sync photoURLThumbnail with photoURL if out of sync
+        if (profile && profile.avatarType === 'custom' && profile.photoURL && profile.photoURL !== profile.photoURLThumbnail) {
+          console.log('🔧 [UserProfileContext] Auto-syncing photoURLThumbnail with photoURL');
+          profile.photoURLThumbnail = profile.photoURL;
+          // Also fix in Firestore so it doesn't happen again
+          usersService.update(profile.id!, { photoURLThumbnail: profile.photoURL }).catch(() => {});
+        }
+
         setRealProfile(profile);
 
         // Actualizar caché con perfil real
@@ -150,6 +158,11 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     }
 
     try {
+      // Auto-sync thumbnail when photoURL changes
+      if (updates.photoURL && !updates.photoURLThumbnail) {
+        updates.photoURLThumbnail = updates.photoURL;
+      }
+
       console.log('🔄 [UserProfileContext] Actualizando perfil activo con:', updates);
 
       const updatesWithTimestamp = {
@@ -180,6 +193,11 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({ childr
     if (!userProfile || !user) {
       console.warn('⚠️ [UserProfileContext] No se puede actualizar: no hay perfil');
       return;
+    }
+
+    // Auto-sync thumbnail when photoURL changes
+    if (updates.photoURL && !updates.photoURLThumbnail) {
+      updates.photoURLThumbnail = updates.photoURL;
     }
 
     const newProfile = { ...userProfile, ...updates };

@@ -40,6 +40,7 @@ export interface Post {
   imageUrl?: string;
   imageUrls?: string[]; // Para múltiples imágenes (full size)
   imageUrlsThumbnails?: string[]; // Thumbnails para carga rápida en el feed
+  imageAspectRatios?: number[]; // Aspect ratios (width/height) alineados 1:1 con imageUrls
   videoUrl?: string;
   poll?: PostPoll; // Encuesta opcional
 
@@ -511,6 +512,45 @@ export const postsService = {
     return {
       documents: sortedPosts,
       lastDoc: null // Pagination not fully supported for multi-community queries
+    };
+  },
+
+  // Obtener posts con video, con paginación (over-fetch y filtra client-side)
+  getVideoPostsPaginated: async (limitCount = 15, lastDoc?: DocumentSnapshot, communitySlug?: string | null) => {
+    const fetchSize = limitCount * 3; // Over-fetch 3x because not all posts have video
+    let allVideoPosts: Post[] = [];
+    let cursor = lastDoc || undefined;
+    let lastVisible: DocumentSnapshot | null = null;
+
+    // Keep fetching until we have enough video posts or run out of data
+    while (allVideoPosts.length < limitCount) {
+      const filters = communitySlug
+        ? [{ field: 'communitySlug', operator: '==' as const, value: communitySlug }]
+        : undefined;
+
+      const result = await firestoreService.getManyPaginated<Post>(
+        'posts',
+        fetchSize,
+        cursor,
+        filters,
+        'createdAt',
+        'desc'
+      );
+
+      if (result.documents.length === 0) break;
+
+      const videoPosts = result.documents.filter(p => !!p.videoUrl);
+      allVideoPosts = [...allVideoPosts, ...videoPosts];
+      lastVisible = result.lastDoc;
+      cursor = result.lastDoc || undefined;
+
+      // If we got fewer docs than requested, there are no more
+      if (result.documents.length < fetchSize) break;
+    }
+
+    return {
+      documents: allVideoPosts.slice(0, limitCount),
+      lastDoc: lastVisible,
     };
   },
 

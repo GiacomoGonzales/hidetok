@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, ScrollView, Dimensions } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,8 +19,244 @@ import Header from '../components/Header';
 import ResponsiveLayout from '../components/ResponsiveLayout';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
 import { HomeStackParamList } from '../navigation/HomeStackNavigator';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS } from '../constants/design';
 import { scale } from '../utils/scale';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Hero data for each community category
+// Custom icons for categories (same as landing carousel)
+const CATEGORY_CUSTOM_ICONS: Record<string, any> = {
+  'noticias': require('../assets/icons/category-noticias.png'),
+  'marketplace': require('../assets/icons/category-marketplace.png'),
+  'relaciones-amor': require('../assets/icons/category-relaciones.png'),
+  'finanzas-dinero': require('../assets/icons/category-trabajo.png'),
+  'laboral': require('../assets/icons/category-laboral.png'),
+  'salud-bienestar': require('../assets/icons/category-salud.png'),
+  'entretenimiento': require('../assets/icons/category-entretenimiento.png'),
+  'gaming-tech': require('../assets/icons/category-gaming.png'),
+  'educacion-carrera': require('../assets/icons/category-educacion.png'),
+  'deportes': require('../assets/icons/category-deportes.png'),
+  'confesiones': require('../assets/icons/category-confesiones.png'),
+  'debates-calientes': require('../assets/icons/category-debates.png'),
+  'viajes-lugares': require('../assets/icons/category-viajes.png'),
+  'comida-cocina': require('../assets/icons/category-comida.png'),
+  'moda-estilo': require('../assets/icons/category-moda.png'),
+  'espiritualidad': require('../assets/icons/category-espiritualidad.png'),
+  'anime-manga': require('../assets/icons/category-anime.png'),
+  'criptomonedas': require('../assets/icons/category-cripto.png'),
+  'kpop-kdrama': require('../assets/icons/category-kpop.png'),
+  'esoterico': require('../assets/icons/category-esoterico.png'),
+  'accion-poetica': require('../assets/icons/category-accion-poetica.png'),
+  'ai-tecnologia': require('../assets/icons/category-ai-tecnologia.png'),
+  'eventos-salidas': require('../assets/icons/category-eventos.png'),
+  'negocios-inversiones': require('../assets/icons/category-negocios.png'),
+  'bares-restaurantes': require('../assets/icons/category-bares.png'),
+};
+
+const COMMUNITY_HERO_DATA: Record<string, { description: string; image: string; color: string; icon: string }> = {
+  'noticias': {
+    description: 'Lo que está pasando en el mundo, contado por la comunidad. Debates, análisis y opiniones en tiempo real.',
+    image: 'https://images.unsplash.com/photo-1495020689067-958852a7765e?w=800&h=400&fit=crop&q=80',
+    color: '#10B981',
+    icon: 'newspaper-outline',
+  },
+  'marketplace': {
+    description: 'Compra, vende e intercambia productos y servicios con la comunidad.',
+    image: 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=800&h=400&fit=crop&q=80',
+    color: '#D97706',
+    icon: 'storefront-outline',
+  },
+  'relaciones-amor': {
+    description: 'Historias, consejos y experiencias sobre relaciones, citas y todo lo que tiene que ver con el amor.',
+    image: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=800&h=400&fit=crop&q=80',
+    color: '#EC4899',
+    icon: 'heart-outline',
+  },
+  'finanzas-dinero': {
+    description: 'Tips de ahorro, inversiones, y todo sobre cómo manejar tu dinero de forma inteligente.',
+    image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=800&h=400&fit=crop&q=80',
+    color: '#6366F1',
+    icon: 'cash-outline',
+  },
+  'laboral': {
+    description: 'Experiencias laborales, consejos de carrera, búsqueda de empleo y vida en la oficina.',
+    image: 'https://images.unsplash.com/photo-1497032628192-86f99bcd76bc?w=800&h=400&fit=crop&q=80',
+    color: '#F59E0B',
+    icon: 'briefcase-outline',
+  },
+  'salud-bienestar': {
+    description: 'Consejos de salud, fitness, nutrición y bienestar mental para una vida mejor.',
+    image: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=800&h=400&fit=crop&q=80',
+    color: '#22C55E',
+    icon: 'fitness-outline',
+  },
+  'entretenimiento': {
+    description: 'Películas, series, música, memes y todo lo que te entretiene en el día a día.',
+    image: 'https://images.unsplash.com/photo-1603190287605-e6ade32fa852?w=800&h=400&fit=crop&q=80',
+    color: '#F59E0B',
+    icon: 'film-outline',
+  },
+  'gaming-tech': {
+    description: 'Videojuegos, gadgets, reviews y todo sobre el mundo gamer y tecnológico.',
+    image: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&h=400&fit=crop&q=80',
+    color: '#8B5CF6',
+    icon: 'game-controller-outline',
+  },
+  'educacion-carrera': {
+    description: 'Universidades, cursos, becas y todo para impulsar tu educación y carrera profesional.',
+    image: 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800&h=400&fit=crop&q=80',
+    color: '#0EA5E9',
+    icon: 'school-outline',
+  },
+  'deportes': {
+    description: 'Fútbol, básquet, tenis y todos los deportes. Resultados, opiniones y pasión.',
+    image: 'https://images.unsplash.com/photo-1461896836934-bd45ba055e6a?w=800&h=400&fit=crop&q=80',
+    color: '#EF4444',
+    icon: 'football-outline',
+  },
+  'confesiones': {
+    description: 'Un espacio seguro para compartir lo que no le contarías a nadie. Sin juicios.',
+    image: 'https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?w=800&h=400&fit=crop&q=80',
+    color: '#6B7280',
+    icon: 'eye-off-outline',
+  },
+  'debates-calientes': {
+    description: 'Temas polémicos, opiniones divididas y debates intensos. ¿De qué lado estás?',
+    image: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=800&h=400&fit=crop&q=80',
+    color: '#F97316',
+    icon: 'flame-outline',
+  },
+  'viajes-lugares': {
+    description: 'Destinos increíbles, tips de viaje, experiencias y recomendaciones de la comunidad.',
+    image: 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&h=400&fit=crop&q=80',
+    color: '#14B8A6',
+    icon: 'airplane-outline',
+  },
+  'comida-cocina': {
+    description: 'Recetas, restaurantes, street food y todo para los amantes de la buena comida.',
+    image: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&h=400&fit=crop&q=80',
+    color: '#F472B6',
+    icon: 'restaurant-outline',
+  },
+  'moda-estilo': {
+    description: 'Tendencias, outfits, tips de estilo y todo sobre el mundo de la moda.',
+    image: 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=800&h=400&fit=crop&q=80',
+    color: '#A855F7',
+    icon: 'shirt-outline',
+  },
+  'espiritualidad': {
+    description: 'Meditación, mindfulness, crecimiento personal y conexión espiritual.',
+    image: 'https://images.unsplash.com/photo-1499209974431-9dddcece7f88?w=800&h=400&fit=crop&q=80',
+    color: '#FBBF24',
+    icon: 'sparkles-outline',
+  },
+  'anime-manga': {
+    description: 'Anime, manga, cosplay y toda la cultura otaku. ¿Cuál es tu anime favorito?',
+    image: 'https://images.unsplash.com/photo-1578632767115-351597cf9d7b?w=800&h=400&fit=crop&q=80',
+    color: '#FF6B9D',
+    icon: 'sparkles-outline',
+  },
+  'criptomonedas': {
+    description: 'Bitcoin, altcoins, DeFi, NFTs y todo el ecosistema cripto. DYOR.',
+    image: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=800&h=400&fit=crop&q=80',
+    color: '#F7931A',
+    icon: 'logo-bitcoin',
+  },
+  'kpop-kdrama': {
+    description: 'Idols, dramas, comebacks y todo sobre la cultura pop coreana.',
+    image: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=800&h=400&fit=crop&q=80',
+    color: '#FF2D78',
+    icon: 'musical-notes-outline',
+  },
+  'esoterico': {
+    description: 'Astrología, tarot, energías y misterios del universo. ¿En qué crees?',
+    image: 'https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=800&h=400&fit=crop&q=80',
+    color: '#7C3AED',
+    icon: 'moon-outline',
+  },
+  'accion-poetica': {
+    description: 'Poesía, frases, letras y arte urbano. Expresa lo que sientes con palabras.',
+    image: 'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=800&h=400&fit=crop&q=80',
+    color: '#EC4899',
+    icon: 'pencil-outline',
+  },
+  'ai-tecnologia': {
+    description: 'Inteligencia artificial, innovación, startups y el futuro de la tecnología.',
+    image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=800&h=400&fit=crop&q=80',
+    color: '#06B6D4',
+    icon: 'hardware-chip-outline',
+  },
+  'eventos-salidas': {
+    description: 'Fiestas, conciertos, meetups y eventos. ¿A dónde salimos hoy?',
+    image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&h=400&fit=crop&q=80',
+    color: '#F43F5E',
+    icon: 'calendar-outline',
+  },
+  'negocios-inversiones': {
+    description: 'Emprendimiento, inversiones, estrategias de negocio y oportunidades.',
+    image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&h=400&fit=crop&q=80',
+    color: '#059669',
+    icon: 'trending-up-outline',
+  },
+  'bares-restaurantes': {
+    description: 'Los mejores bares, restaurantes, cervecerías y spots para salir a comer.',
+    image: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=800&h=400&fit=crop&q=80',
+    color: '#B45309',
+    icon: 'beer-outline',
+  },
+  // Comunidades hardcoded de la landing
+  'los-beatles': {
+    description: 'Todo sobre la banda más grande de la historia. Discografía, historia y legado.',
+    image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&h=400&fit=crop&q=80',
+    color: '#3B82F6',
+    icon: 'musical-notes-outline',
+  },
+  'tarot-lectura': {
+    description: 'Lecturas de tarot, interpretaciones, arcanos y guía espiritual para tu camino.',
+    image: 'https://images.unsplash.com/photo-1600429991827-5224817554f2?w=800&h=400&fit=crop&q=80',
+    color: '#8B5CF6',
+    icon: 'moon-outline',
+  },
+  'recetas-abuela': {
+    description: 'Las recetas caseras que pasan de generación en generación. Cocina con alma.',
+    image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=800&h=400&fit=crop&q=80',
+    color: '#F59E0B',
+    icon: 'cafe-outline',
+  },
+  'memes-argentinos': {
+    description: 'Los mejores memes argentinos. Humor criollo, actualidad y cultura popular.',
+    image: 'https://images.unsplash.com/photo-1531259683007-016a7b628fc3?w=800&h=400&fit=crop&q=80',
+    color: '#F97316',
+    icon: 'happy-outline',
+  },
+  'true-crime-latino': {
+    description: 'Casos reales, misterios sin resolver y crónicas policiales de Latinoamérica.',
+    image: 'https://images.unsplash.com/photo-1453873531674-2151bcd01707?w=800&h=400&fit=crop&q=80',
+    color: '#EF4444',
+    icon: 'skull-outline',
+  },
+  'plantitas-jardin': {
+    description: 'Tips de jardinería, cuidado de plantas, suculentas y todo para tu jardín.',
+    image: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=800&h=400&fit=crop&q=80',
+    color: '#10B981',
+    icon: 'leaf-outline',
+  },
+  'rock-nacional': {
+    description: 'El rock argentino y latinoamericano. Bandas, discos, recitales y nostalgia.',
+    image: 'https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?w=800&h=400&fit=crop&q=80',
+    color: '#6366F1',
+    icon: 'radio-outline',
+  },
+  'cat-lovers': {
+    description: 'Fotos, videos, consejos y todo sobre nuestros amigos felinos.',
+    image: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&h=400&fit=crop&q=80',
+    color: '#EC4899',
+    icon: 'paw-outline',
+  },
+};
 
 type HomeScreenNavigationProp = StackNavigationProp<HomeStackParamList>;
 type HomeScreenRouteProp = RouteProp<HomeStackParamList, 'Feed'>;
@@ -326,7 +562,7 @@ const HomeScreen: React.FC = () => {
     }
   };
 
-  const handleVideoPress = useCallback((post: Post) => {
+  const handleVideoPress = useCallback((post: Post, positionMillis?: number) => {
     // Filter current feed posts to only videos
     const videoPosts = posts.filter(p => !!p.videoUrl);
     const parentNavigation = navigation.getParent();
@@ -335,6 +571,7 @@ const HomeScreen: React.FC = () => {
         initialPost: post,
         initialVideoPosts: videoPosts,
         communitySlug: selectedCommunitySlug,
+        initialPositionMillis: positionMillis,
       });
     }
   }, [posts, navigation, selectedCommunitySlug]);
@@ -512,8 +749,110 @@ const HomeScreen: React.FC = () => {
     ? !officialCommunities.some(c => c.slug === selectedCommunitySlug)
     : false;
 
+  const hasImmersiveHero = !!(selectedCommunitySlug && isFromLanding);
+
+  const getHeroData = () => {
+    if (!selectedCommunitySlug) return null;
+    const predefined = COMMUNITY_HERO_DATA[selectedCommunitySlug];
+    if (predefined) return predefined;
+
+    // Fallback for user-created communities
+    const community = getSelectedCommunity();
+    return {
+      description: community?.description || 'Un espacio para compartir, debatir y conectar con la comunidad.',
+      image: community?.imageUrl || 'https://images.unsplash.com/photo-1557683316-973673baf926?w=800&h=400&fit=crop&q=80',
+      color: '#8B5CF6',
+      icon: community?.icon ? community.icon + '-outline' : 'people-outline',
+    };
+  };
+
+  const renderCommunityHero = () => {
+    if (!hasImmersiveHero) return null;
+    const heroData = getHeroData();
+    if (!heroData) return null;
+    const communityName = getSelectedCommunityName();
+    const community = getSelectedCommunity();
+    const memberCount = community?.memberCount || 0;
+
+    return (
+      <View style={styles.heroContainer}>
+        {/* Background image */}
+        <Image
+          source={{ uri: heroData.image }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+        />
+        {/* Dark overlay for readability */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.1)', heroData.color + 'BB']}
+          locations={[0, 0.3, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        {/* Bottom fade into page background */}
+        <LinearGradient
+          colors={['transparent', theme.colors.background]}
+          locations={[0.7, 1]}
+          style={styles.heroBottomFade}
+        />
+
+        {/* Back button floating top-left */}
+        <View style={[styles.heroNav, { paddingTop: insets.top + SPACING.sm }]}>
+          <TouchableOpacity
+            style={styles.heroBackButton}
+            onPress={handleBackToLanding}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={scale(22)} color="white" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Content at bottom */}
+        <View style={styles.heroContent}>
+          {/* Icon badge */}
+          {CATEGORY_CUSTOM_ICONS[selectedCommunitySlug || ''] ? (
+            <Image
+              source={CATEGORY_CUSTOM_ICONS[selectedCommunitySlug || '']}
+              style={styles.heroCustomIcon}
+              contentFit="contain"
+            />
+          ) : (
+            <View style={[styles.heroIconBadge, { backgroundColor: heroData.color }]}>
+              <Ionicons
+                name={(heroData.icon || community?.icon || 'reader-outline') as any}
+                size={scale(20)}
+                color="white"
+              />
+            </View>
+          )}
+
+          <Text style={styles.heroTitle}>{communityName}</Text>
+          <Text style={styles.heroDescription}>{heroData.description}</Text>
+
+          {/* Stats row */}
+          <View style={styles.heroStatsRow}>
+            {memberCount > 0 && (
+              <View style={styles.heroStat}>
+                <Ionicons name="people" size={scale(13)} color="rgba(255,255,255,0.8)" />
+                <Text style={styles.heroStatText}>
+                  {memberCount >= 1000 ? (memberCount / 1000).toFixed(1) + 'K' : memberCount} miembros
+                </Text>
+              </View>
+            )}
+            <View style={styles.heroStat}>
+              <Ionicons name="document-text" size={scale(13)} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.heroStatText}>{posts.length} posts</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   const renderListHeader = () => (
     <View>
+      {/* Community hero banner */}
+      {renderCommunityHero()}
       {/* Community tabs dentro del FlatList */}
       {!isDesktop && !isUserCommunityFeed && (
         <View style={[styles.communityTabContainer, { borderBottomColor: theme.colors.border }]}>
@@ -590,8 +929,16 @@ const HomeScreen: React.FC = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header fijo arriba (NO absolute, layout normal) */}
-      {!isDesktop && (
+      {/* Translucent status bar for immersive hero */}
+      {hasImmersiveHero && (
+        <StatusBar
+          backgroundColor="transparent"
+          barStyle="light-content"
+          translucent
+        />
+      )}
+      {/* Header fijo arriba — hidden when immersive hero is active */}
+      {!isDesktop && !hasImmersiveHero && (
         <View style={{ backgroundColor: theme.colors.background }}>
           {isFromLanding ? (
             <View style={[styles.feedHeader, { paddingTop: insets.top + SPACING.sm }]}>
@@ -621,7 +968,7 @@ const HomeScreen: React.FC = () => {
         renderItem={renderPost}
         keyExtractor={item => item.id || item.userId}
         contentContainerStyle={[
-          posts.length === 0 && styles.emptyContainer
+          posts.length === 0 && !hasImmersiveHero && styles.emptyContainer
         ]}
         showsVerticalScrollIndicator={false}
         onScroll={(event) => {
@@ -686,6 +1033,97 @@ const HomeScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  heroContainer: {
+    width: SCREEN_WIDTH,
+    height: scale(280),
+    overflow: 'hidden',
+  },
+  heroBottomFade: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: scale(80),
+  },
+  heroNav: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+  },
+  heroBackButton: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heroContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.lg,
+  },
+  heroIconBadge: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(12),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  heroCustomIcon: {
+    width: scale(44),
+    height: scale(44),
+    marginBottom: SPACING.sm,
+  },
+  heroTitle: {
+    fontSize: FONT_SIZE.xxxl,
+    fontWeight: FONT_WEIGHT.bold,
+    color: 'white',
+    marginBottom: SPACING.xs,
+    letterSpacing: -0.8,
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
+  },
+  heroDescription: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
+    color: 'rgba(255,255,255,0.9)',
+    lineHeight: scale(19),
+    marginBottom: SPACING.sm,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  heroStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.lg,
+  },
+  heroStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  heroStatText: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.medium,
+    color: 'rgba(255,255,255,0.8)',
   },
   feedHeader: {
     flexDirection: 'row',

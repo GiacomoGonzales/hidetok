@@ -14,9 +14,11 @@ import { scale } from '../utils/scale';
 
 interface HeaderProps {
   onNotificationsPress?: () => void;
+  onMenuPress?: () => void;
+  transparent?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ onNotificationsPress }) => {
+const Header: React.FC<HeaderProps> = ({ onNotificationsPress, onMenuPress, transparent }) => {
   const { theme, setThemeMode } = useTheme();
   const { user } = useAuth();
   const { hasHidiProfile, activeProfileType, switchIdentity } = useUserProfile();
@@ -64,20 +66,32 @@ const Header: React.FC<HeaderProps> = ({ onNotificationsPress }) => {
     }
   };
 
+  const textColor = transparent ? 'white' : theme.colors.text;
+
   return (
     <>
       <StatusBar
-        backgroundColor={theme.colors.background}
-        barStyle={theme.dark ? 'light-content' : 'dark-content'}
+        backgroundColor={transparent ? 'transparent' : theme.colors.background}
+        barStyle={transparent ? 'light-content' : (theme.dark ? 'light-content' : 'dark-content')}
+        translucent={transparent}
       />
       <View style={[styles.container, {
-        backgroundColor: theme.colors.background,
+        backgroundColor: transparent ? 'transparent' : theme.colors.background,
         paddingTop: insets.top,
-        borderBottomColor: theme.colors.border,
+        borderBottomColor: transparent ? 'transparent' : theme.colors.border,
+        borderBottomWidth: transparent ? 0 : scale(0.5),
       }]}>
         <View style={styles.content}>
-          {/* Logo */}
-          <TouchableOpacity onPress={handleLogoPress} activeOpacity={0.7} style={styles.logoContainer}>
+          <View style={styles.leftSection}>
+            {/* Hamburger menu */}
+            {onMenuPress && (
+              <TouchableOpacity onPress={onMenuPress} activeOpacity={0.7} style={styles.menuButton}>
+                <Ionicons name="menu-outline" size={ICON_SIZE.lg} color={textColor} />
+              </TouchableOpacity>
+            )}
+
+            {/* Logo */}
+            <TouchableOpacity onPress={handleLogoPress} activeOpacity={0.7} style={styles.logoContainer}>
             <Image
               source={require('../assets/logo.png')}
               style={styles.logo}
@@ -85,8 +99,9 @@ const Header: React.FC<HeaderProps> = ({ onNotificationsPress }) => {
               priority="high"
               cachePolicy="memory-disk"
             />
-            <Text style={[styles.logoText, { color: theme.colors.text }]}>HideTok</Text>
+            <Text style={[styles.logoText, { color: textColor }]}>HideTok</Text>
           </TouchableOpacity>
+          </View>
 
           {/* Actions */}
           <View style={styles.actions}>
@@ -94,8 +109,12 @@ const Header: React.FC<HeaderProps> = ({ onNotificationsPress }) => {
             {user && hasHidiProfile && (
               <TouchableOpacity
                 style={[styles.switchButton, {
-                  backgroundColor: activeProfileType === 'hidi' ? theme.colors.accent + '20' : theme.colors.surface,
-                  borderColor: activeProfileType === 'hidi' ? theme.colors.accent : theme.colors.border,
+                  backgroundColor: transparent
+                    ? 'rgba(255,255,255,0.15)'
+                    : (activeProfileType === 'hidi' ? theme.colors.accent + '20' : theme.colors.surface),
+                  borderColor: transparent
+                    ? 'rgba(255,255,255,0.3)'
+                    : (activeProfileType === 'hidi' ? theme.colors.accent : theme.colors.border),
                 }]}
                 onPress={handleSwitchIdentity}
                 activeOpacity={0.7}
@@ -103,10 +122,10 @@ const Header: React.FC<HeaderProps> = ({ onNotificationsPress }) => {
                 <Ionicons
                   name={activeProfileType === 'hidi' ? 'eye-off' : 'eye'}
                   size={ICON_SIZE.md}
-                  color={activeProfileType === 'hidi' ? theme.colors.accent : theme.colors.text}
+                  color={transparent ? 'white' : (activeProfileType === 'hidi' ? theme.colors.accent : textColor)}
                 />
                 <Text style={[styles.switchButtonText, {
-                  color: activeProfileType === 'hidi' ? theme.colors.accent : theme.colors.text,
+                  color: transparent ? 'white' : (activeProfileType === 'hidi' ? theme.colors.accent : textColor),
                 }]}>
                   {activeProfileType === 'hidi' ? 'HIDI' : 'Real'}
                 </Text>
@@ -124,7 +143,7 @@ const Header: React.FC<HeaderProps> = ({ onNotificationsPress }) => {
                   <Ionicons
                     name={unreadCount > 0 ? "notifications" : "notifications-outline"}
                     size={ICON_SIZE.lg}
-                    color={unreadCount > 0 ? theme.colors.accent : theme.colors.text}
+                    color={transparent ? 'white' : (unreadCount > 0 ? theme.colors.accent : theme.colors.text)}
                   />
                   {unreadCount > 0 && (
                     <View style={[styles.badge, { backgroundColor: theme.colors.accent }]}>
@@ -162,6 +181,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+  },
+  leftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  menuButton: {
+    padding: SPACING.xs,
   },
   logoContainer: {
     flexDirection: 'row',

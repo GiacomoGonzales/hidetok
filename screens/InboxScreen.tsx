@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   TextInput,
 } from 'react-native';
+import DrawerMenu from '../components/DrawerMenu';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -33,6 +34,7 @@ const InboxScreen: React.FC = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
   // Función de navegación para el header
   const handleNotificationsPress = () => {
@@ -299,6 +301,7 @@ const InboxScreen: React.FC = () => {
       {!isDesktop && (
         <Header
           onNotificationsPress={handleNotificationsPress}
+          onMenuPress={() => setDrawerVisible(true)}
         />
       )}
 
@@ -315,6 +318,8 @@ const InboxScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={renderEmptyState}
       />
+
+      <DrawerMenu visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </View>
   );
 };

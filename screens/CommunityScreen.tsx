@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
-  ScrollView,
+  Image,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -20,7 +20,6 @@ import { useUserProfile } from '../contexts/UserProfileContext';
 import { useCommunity } from '../hooks/useCommunities';
 import { useCommunities } from '../hooks/useCommunities';
 import { postsService, Post } from '../services/firestoreService';
-import { Community } from '../services/communityService';
 import PostCard from '../components/PostCard';
 import { MainStackParamList } from '../navigation/MainStackNavigator';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS } from '../constants/design';
@@ -49,8 +48,10 @@ const CommunityScreen: React.FC = () => {
   const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
   const [joiningOrLeaving, setJoiningOrLeaving] = useState(false);
   const [showRules, setShowRules] = useState(false);
-
   const isUserMember = community?.id ? isMember(community.id) : false;
+
+  // Video posts for Hids button
+  const videoPosts = useMemo(() => posts.filter(p => !!p.videoUrl), [posts]);
 
   // Cargar posts de la comunidad
   const loadPosts = useCallback(async () => {
@@ -142,6 +143,16 @@ const CommunityScreen: React.FC = () => {
     navigation.navigate('PostDetail', { post });
   };
 
+  const handleVideoPress = useCallback((post: Post, positionMillis?: number) => {
+    const videoPosts = posts.filter(p => !!p.videoUrl);
+    navigation.navigate('Reels' as any, {
+      initialPost: post,
+      initialVideoPosts: videoPosts,
+      communitySlug: community?.slug || null,
+      initialPositionMillis: positionMillis,
+    });
+  }, [posts, navigation, community?.slug]);
+
   const renderPost = ({ item }: { item: Post }) => (
     <View style={styles.postContainer}>
       <PostCard
@@ -149,6 +160,7 @@ const CommunityScreen: React.FC = () => {
         onComment={handleComment}
         onPrivateMessage={handlePrivateMessage}
         onPress={handlePostPress}
+        onVideoPress={handleVideoPress}
       />
     </View>
   );
@@ -268,11 +280,49 @@ const CommunityScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Posts Header */}
-        <View style={styles.postsHeader}>
-          <Text style={[styles.postsTitle, { color: theme.colors.text }]}>
-            Publicaciones
-          </Text>
+        {/* Feed Tabs */}
+        <View style={[styles.tabsContainer, { borderBottomColor: theme.colors.border }]}>
+          <View
+            style={[
+              styles.tab,
+              { borderBottomColor: theme.colors.accent },
+            ]}
+          >
+            <Ionicons
+              name="albums-outline"
+              size={scale(18)}
+              color={theme.colors.accent}
+            />
+            <Text style={[
+              styles.tabText,
+              { color: theme.colors.accent },
+              styles.tabTextActive,
+            ]}>
+              Flow
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.tab}
+            onPress={() => {
+              if (videoPosts.length > 0) {
+                handleVideoPress(videoPosts[0]);
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="play-outline"
+              size={scale(18)}
+              color={theme.colors.textSecondary}
+            />
+            <Text style={[
+              styles.tabText,
+              { color: theme.colors.textSecondary },
+            ]}>
+              Hids
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -343,7 +393,7 @@ const CommunityScreen: React.FC = () => {
       <FlatList
         data={posts}
         renderItem={renderPost}
-        keyExtractor={item => item.id || item.userId}
+        keyExtractor={(item: Post) => item.id || item.userId}
         ListHeaderComponent={renderHeader}
         contentContainerStyle={posts.length === 0 ? styles.emptyContainer : undefined}
         showsVerticalScrollIndicator={false}
@@ -366,7 +416,11 @@ const CommunityScreen: React.FC = () => {
         }
         ListEmptyComponent={() => (
           <View style={styles.emptyState}>
-            <Ionicons name="document-text-outline" size={48} color={theme.colors.textSecondary} />
+            <Ionicons
+              name="document-text-outline"
+              size={48}
+              color={theme.colors.textSecondary}
+            />
             <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
               No hay publicaciones
             </Text>
@@ -522,12 +576,26 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: scale(20),
   },
-  postsHeader: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+  tabsContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 0.5,
+    marginTop: SPACING.xs,
   },
-  postsTitle: {
-    fontSize: FONT_SIZE.lg,
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    gap: SPACING.xs,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabText: {
+    fontSize: FONT_SIZE.base,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  tabTextActive: {
     fontWeight: FONT_WEIGHT.semibold,
   },
   postContainer: {

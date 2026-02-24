@@ -17,6 +17,7 @@ import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import HidiCreationScreen from '../screens/HidiCreationScreen';
 import AiAvatarScreen from '../screens/AiAvatarScreen';
+import ReelsScreen from '../screens/ReelsScreen';
 import AuthStackNavigator from './AuthStackNavigator';
 import Sidebar from '../components/Sidebar';
 import RightSidebar from '../components/RightSidebar';
@@ -39,6 +40,12 @@ export type MainStackParamList = {
   };
   HidiCreation: undefined;
   AiAvatar: undefined;
+  Reels: {
+    initialPost: Post;
+    initialVideoPosts: Post[];
+    communitySlug?: string | null;
+    initialPositionMillis?: number;
+  };
   Auth: {
     screen?: 'Login' | 'Register';
   } | undefined;
@@ -248,6 +255,15 @@ const MainStackNavigator: React.FC = () => {
         options={{
           presentation: 'card',
           headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="Reels"
+        component={ReelsScreen}
+        options={{
+          presentation: 'fullScreenModal',
+          headerShown: false,
+          cardStyle: { backgroundColor: '#000' },
         }}
       />
       <Stack.Screen
