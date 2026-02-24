@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image as RNImage,
   Dimensions,
   Share,
   Alert,
@@ -15,6 +14,8 @@ import {
   Animated,
   ActivityIndicator,
   Platform,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
@@ -39,6 +40,12 @@ import AvatarDisplay from './avatars/AvatarDisplay';
 import ImageViewer from './ImageViewer';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, ICON_SIZE } from '../constants/design';
 import { scale } from '../utils/scale';
+import { getCachedAspectRatio, setCachedAspectRatio, fetchAndCacheAspectRatio } from '../utils/imageDimensionCache';
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 type PostCardNavigationProp = StackNavigationProp<MainStackParamList>;
 
@@ -47,6 +54,7 @@ interface PostCardProps {
   onComment: (postId: string) => void;
   onPrivateMessage: (userId: string, userData?: { displayName: string; avatarType?: string; avatarId?: string; photoURL?: string; photoURLThumbnail?: string }) => void;
   onPress?: (post: Post) => void;
+  onVideoPress?: (post: Post, positionMillis?: number) => void;
   isVisible?: boolean;
 }
 
@@ -72,6 +80,7 @@ const PostCard: React.FC<PostCardProps> = ({
   onComment,
   onPrivateMessage,
   onPress,
+  onVideoPress,
   isVisible = true,
 }) => {
   const { theme } = useTheme();
@@ -113,7 +122,28 @@ const PostCard: React.FC<PostCardProps> = ({
   const { community } = useCommunityById(post.communityId);
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [imageDimensions, setImageDimensions] = useState<ImageDimensions | null>(null);
+  const [imageDimensions, setImageDimensions] = useState<ImageDimensions | null>(() => {
+    // Synchronous initialization: post data > cache > null
+    const imageUrls = post.imageUrls;
+    if (!imageUrls || imageUrls.length === 0) return null;
+
+    // Priority 1: aspect ratios stored in Firestore
+    if (post.imageAspectRatios && post.imageAspectRatios[0]) {
+      const ar = post.imageAspectRatios[0];
+      // Also populate the cache for future use
+      setCachedAspectRatio(imageUrls[0], ar);
+      return { width: ar, height: 1, aspectRatio: ar };
+    }
+
+    // Priority 2: in-memory cache
+    const cached = getCachedAspectRatio(imageUrls[0]);
+    if (cached !== undefined) {
+      return { width: cached, height: 1, aspectRatio: cached };
+    }
+
+    // No synchronous data available, will fetch in useEffect
+    return null;
+  });
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -122,21 +152,29 @@ const PostCard: React.FC<PostCardProps> = ({
   const [localViews, setLocalViews] = useState(post.views || 0);
   const [isSharing, setIsSharing] = useState(false);
   const [showShareCard, setShowShareCard] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [userPaused, setUserPaused] = useState(false);
   const videoRef = useRef<Video>(null);
 
-  // Pausar y silenciar video cuando el post no es visible o la pantalla pierde foco
+  // Enable audio in silent mode
+  useEffect(() => {
+    if (post.videoUrl) {
+      Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+    }
+  }, []);
+
+  // Pausar video cuando el post no es visible o la pantalla pierde foco
   useEffect(() => {
     if (!videoRef.current || !post.videoUrl) return;
     if (isVisible && isFocused) {
-      videoRef.current.playAsync();
-      setIsPlaying(true);
+      if (!userPaused) {
+        videoRef.current.playAsync();
+        setIsPlaying(true);
+      }
     } else {
       videoRef.current.pauseAsync();
-      videoRef.current.setIsMutedAsync(true);
       setIsPlaying(false);
-      setIsMuted(true);
     }
   }, [isVisible, isFocused]);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -244,7 +282,7 @@ const PostCard: React.FC<PostCardProps> = ({
     }
   }, [post.id, user]);
 
-  // Cargar dimensiones de la primera imagen con mejor manejo de errores
+  // Cargar dimensiones de la primera imagen: post data > cache > getSize > fallback
   useEffect(() => {
     // Si es repost y no ha cargado el original, no hacer nada
     if (isRepost && !originalPost) return;
@@ -252,21 +290,29 @@ const PostCard: React.FC<PostCardProps> = ({
     const postToUse = isRepost && originalPost ? originalPost : post;
     const imageUrls = postToUse?.imageUrls;
 
-    if (imageUrls && imageUrls.length > 0) {
-      // Intentar obtener dimensiones reales (sin cambiar el estado hasta obtenerlas)
-      RNImage.getSize(
-        imageUrls[0],
-        (width, height) => {
-          const aspectRatio = width / height;
-          setImageDimensions({ width, height, aspectRatio });
-        },
-        (error) => {
-          // Si falla, usar dimensiones por defecto 4:3
-          console.log('Using default image dimensions (4:3)');
-          setImageDimensions({ width: 4, height: 3, aspectRatio: 4/3 });
-        }
-      );
+    if (!imageUrls || imageUrls.length === 0) return;
+
+    // Priority 1: aspect ratios from Firestore
+    const storedRatios = postToUse?.imageAspectRatios;
+    if (storedRatios && storedRatios[0]) {
+      const ar = storedRatios[0];
+      setCachedAspectRatio(imageUrls[0], ar);
+      setImageDimensions({ width: ar, height: 1, aspectRatio: ar });
+      return;
     }
+
+    // Priority 2: in-memory cache
+    const cached = getCachedAspectRatio(imageUrls[0]);
+    if (cached !== undefined) {
+      setImageDimensions({ width: cached, height: 1, aspectRatio: cached });
+      return;
+    }
+
+    // Priority 3: fetch via getSize (only for old posts without stored ratios)
+    fetchAndCacheAspectRatio(imageUrls[0], (aspectRatio) => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setImageDimensions({ width: aspectRatio, height: 1, aspectRatio });
+    });
   }, [isRepost, originalPost, post.imageUrls]);
 
   const navigateToRegister = () => {
@@ -322,7 +368,11 @@ const PostCard: React.FC<PostCardProps> = ({
     }
   };
 
-  const handleImagePress = (index: number) => {
+  const handleImagePress = () => {
+    onPress?.(displayPost);
+  };
+
+  const handleImageLongPress = (index: number) => {
     setSelectedImageIndex(index);
     setImageViewerVisible(true);
   };
@@ -544,9 +594,12 @@ const PostCard: React.FC<PostCardProps> = ({
     setCurrentImageIndex(index);
   };
 
+  const playbackPositionRef = useRef(0);
+
   const handlePlaybackStatusUpdate = useCallback((status: AVPlaybackStatus) => {
     if (status.isLoaded) {
       setIsPlaying(status.isPlaying);
+      playbackPositionRef.current = status.positionMillis;
     }
   }, []);
 
@@ -554,8 +607,10 @@ const PostCard: React.FC<PostCardProps> = ({
     if (!videoRef.current) return;
     if (isPlaying) {
       await videoRef.current.pauseAsync();
+      setUserPaused(true);
     } else {
       await videoRef.current.playAsync();
+      setUserPaused(false);
     }
   }, [isPlaying]);
 
@@ -579,7 +634,7 @@ const PostCard: React.FC<PostCardProps> = ({
       <View style={styles.videoContainer}>
         <TouchableOpacity
           activeOpacity={0.95}
-          onPress={togglePlayPause}
+          onPress={onVideoPress ? () => onVideoPress(displayPost, playbackPositionRef.current) : togglePlayPause}
           style={styles.videoTouchable}
         >
           <Video
@@ -596,8 +651,8 @@ const PostCard: React.FC<PostCardProps> = ({
             usePoster={!!displayPost.imageUrls?.[0]}
           />
 
-          {/* Play/Pause overlay (shows when paused) */}
-          {!isPlaying && (
+          {/* Play/Pause overlay (shows only when user taps to pause) */}
+          {userPaused && (
             <View style={styles.videoPlayOverlay}>
               <View style={styles.videoPlayButton}>
                 <Ionicons name="play" size={scale(40)} color="white" />
@@ -650,7 +705,8 @@ const PostCard: React.FC<PostCardProps> = ({
             styles.singleMediaContainer,
             { height: calculatedHeight }
           ]}
-          onPress={() => handleImagePress(0)}
+          onPress={() => handleImagePress()}
+          onLongPress={() => handleImageLongPress(0)}
           activeOpacity={0.98}
         >
           <Image
@@ -707,7 +763,8 @@ const PostCard: React.FC<PostCardProps> = ({
               <TouchableOpacity
                 key={index}
                 style={[styles.carouselImageContainer, { width: carouselWidth, height: carouselHeight }]}
-                onPress={() => handleImagePress(index)}
+                onPress={() => handleImagePress()}
+                onLongPress={() => handleImageLongPress(index)}
                 activeOpacity={0.98}
               >
                 <Image
@@ -1026,7 +1083,8 @@ const PostCard: React.FC<PostCardProps> = ({
           activeOpacity={0.9}
         >
           {displayPost.content ? renderTextWithLinks(displayPost.content) : null}
-          {renderMedia()}
+          {/* Render media inline only when there's no onVideoPress for videos */}
+          {!(displayPost.videoUrl && onVideoPress) && renderMedia()}
           {renderPoll()}
 
           {/* Tags del post */}
@@ -1045,6 +1103,8 @@ const PostCard: React.FC<PostCardProps> = ({
             </View>
           )}
         </TouchableOpacity>
+        {/* Video rendered outside the content TouchableOpacity so taps reach onVideoPress */}
+        {displayPost.videoUrl && onVideoPress && renderMedia()}
       </View>
 
       {/* Acciones */}
@@ -1448,7 +1508,7 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: SPACING.xs,
+    paddingTop: SPACING.md,
     justifyContent: 'space-between',
   },
   actionButton: {

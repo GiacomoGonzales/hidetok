@@ -15,6 +15,8 @@ import {
   ActivityIndicator,
   Keyboard,
   Alert,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,6 +37,7 @@ import ImageViewer from '../components/ImageViewer';
 import CommentCard from '../components/CommentCard';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, ICON_SIZE } from '../constants/design';
 import { scale } from '../utils/scale';
+import { getCachedAspectRatio, setCachedAspectRatio, fetchAndCacheAspectRatio } from '../utils/imageDimensionCache';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MainStackParamList } from '../navigation/MainStackNavigator';
@@ -50,13 +53,18 @@ const MAX_IMAGE_HEIGHT = scale(500);
 
 const getCarouselWidth = () => {
   const availableWidth = Math.min(screenWidth, scale(CARD_MAX_WIDTH));
-  return availableWidth;
+  return availableWidth - (SPACING.lg * 2);
 };
 
 interface ImageDimensions {
   width: number;
   height: number;
   aspectRatio: number;
+}
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 const PostDetailScreen: React.FC = () => {
@@ -89,7 +97,26 @@ const PostDetailScreen: React.FC = () => {
   const [commentText, setCommentText] = useState('');
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [imageDimensions, setImageDimensions] = useState<ImageDimensions | null>(null);
+  const [imageDimensions, setImageDimensions] = useState<ImageDimensions | null>(() => {
+    // Synchronous initialization: Firestore data > cache > null
+    const imageUrls = post.imageUrls;
+    if (!imageUrls || imageUrls.length === 0) return null;
+
+    // Priority 1: aspect ratios stored in Firestore
+    if (post.imageAspectRatios && post.imageAspectRatios[0]) {
+      const ar = post.imageAspectRatios[0];
+      setCachedAspectRatio(imageUrls[0], ar);
+      return { width: ar, height: 1, aspectRatio: ar };
+    }
+
+    // Priority 2: in-memory cache (likely populated by PostCard in the feed)
+    const cached = getCachedAspectRatio(imageUrls[0]);
+    if (cached !== undefined) {
+      return { width: cached, height: 1, aspectRatio: cached };
+    }
+
+    return null;
+  });
   const [comments, setComments] = useState<Comment[]>([]);
   const [loadingComments, setLoadingComments] = useState(true);
   const [submittingComment, setSubmittingComment] = useState(false);
@@ -99,22 +126,16 @@ const PostDetailScreen: React.FC = () => {
   const scrollViewRef = useRef<ScrollView>(null);
   const carouselWidth = getCarouselWidth();
 
-  // Cargar dimensiones de la primera imagen
+  // Fetch image dimensions only if not already known
   useEffect(() => {
-    if (post.imageUrls && post.imageUrls.length > 0) {
-      Image.getSize(
-        post.imageUrls[0],
-        (width, height) => {
-          const aspectRatio = width / height;
-          setImageDimensions({ width, height, aspectRatio });
-        },
-        (error) => {
-          console.error('Error loading image dimensions:', error);
-          // Usar dimensiones por defecto si falla
-          setImageDimensions({ width: 1, height: 1, aspectRatio: 1 });
-        }
-      );
-    }
+    if (!post.imageUrls || post.imageUrls.length === 0) return;
+    // Skip if already resolved synchronously
+    if (imageDimensions) return;
+
+    fetchAndCacheAspectRatio(post.imageUrls[0], (aspectRatio) => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setImageDimensions({ width: aspectRatio, height: 1, aspectRatio });
+    });
   }, [post.imageUrls]);
 
   // Cargar comentarios en tiempo real
@@ -993,6 +1014,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: SPACING.sm,
     marginBottom: SPACING.sm,
+    marginHorizontal: SPACING.lg,
   },
   singleImage: {
     width: '100%',
@@ -1001,6 +1023,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginTop: SPACING.sm,
     marginBottom: SPACING.sm,
+    marginHorizontal: SPACING.lg,
     borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
   },

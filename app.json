@@ -54,7 +54,8 @@
             "DEFAULT"
           ]
         }
-      ]
+      ],
+      "runtimeVersion": "1.0.0"
     },
     "ios": {
       "bundleIdentifier": "com.hidetok.app",
@@ -115,7 +116,11 @@
           "iosUrlScheme": "com.googleusercontent.apps.600935858829-v7m2m7j21k2sae85u0cd1mnsuq0vds0b"
         }
       ],
+      "react-native-compressor"
     ],
-    "owner": "giacomogonzales"
+    "owner": "giacomogonzales",
+    "updates": {
+      "url": "https://u.expo.dev/31297521-34c6-4238-af4f-e663953af31f"
+    }
   }
 }

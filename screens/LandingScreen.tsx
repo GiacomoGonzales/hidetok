@@ -12,9 +12,11 @@ import {
   ViewabilityConfig,
   ViewToken,
   Animated,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useNavigation } from '@react-navigation/native';
+import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,6 +32,9 @@ import { DocumentSnapshot } from 'firebase/firestore';
 import AvatarDisplay from '../components/avatars/AvatarDisplay';
 import PostCard from '../components/PostCard';
 import Header from '../components/Header';
+import { useUserById } from '../hooks/useUserById';
+import { useVote } from '../hooks/useVote';
+import { formatNumber, getRelativeTime } from '../data/mockData';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS } from '../constants/design';
 import { scale } from '../utils/scale';
 
@@ -241,6 +246,251 @@ const LANDING_CATEGORIES = [
 
 type LandingScreenNavigationProp = StackNavigationProp<any>;
 
+// ===================== HidReelItem (inline reel for Hids tab) =====================
+
+interface HidReelItemProps {
+  post: Post;
+  isActive: boolean;
+  height: number;
+  onComment: (postId: string) => void;
+}
+
+const HidReelItem: React.FC<HidReelItemProps> = React.memo(({ post, isActive, height, onComment }) => {
+  const { user } = useAuth();
+  const { userProfile: activeProfile } = useUserProfile();
+  const { userProfile: postAuthor } = useUserById(post.userId);
+  const isFocused = useIsFocused();
+  const videoRef = useRef<Video>(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(true);
+  const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
+
+  const { stats: voteStats, voteAgree, voteDisagree } = useVote({
+    postId: post.id!,
+    userId: activeProfile?.uid || user?.uid,
+    initialStats: {
+      agreementCount: post.agreementCount || 0,
+      disagreementCount: post.disagreementCount || 0,
+    },
+  });
+
+  useEffect(() => {
+    Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+  }, []);
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+    if (isActive && !isPaused && isFocused) {
+      videoRef.current.playAsync();
+    } else {
+      videoRef.current.pauseAsync();
+    }
+  }, [isActive, isPaused, isFocused]);
+
+  const handleTapVideo = useCallback(() => {
+    if (!videoRef.current) return;
+    if (isPaused) {
+      videoRef.current.playAsync();
+      setIsPaused(false);
+    } else {
+      videoRef.current.pauseAsync();
+      setIsPaused(true);
+    }
+  }, [isPaused]);
+
+  const handlePlaybackStatus = useCallback((status: AVPlaybackStatus) => {
+    if (status.isLoaded) {
+      setIsBuffering(status.isBuffering);
+      if (status.isPlaying && !hasStartedPlaying) {
+        setHasStartedPlaying(true);
+      }
+    }
+  }, [hasStartedPlaying]);
+
+  return (
+    <View style={{ width: SCREEN_WIDTH, height, backgroundColor: '#000' }}>
+      {/* Poster image */}
+      {post.imageUrls?.[0] && (
+        <Image
+          source={{ uri: post.imageUrls[0] }}
+          style={[StyleSheet.absoluteFill, { zIndex: hasStartedPlaying ? 0 : 2 }]}
+          contentFit="cover"
+        />
+      )}
+
+      {/* Video */}
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={handleTapVideo}
+        style={[StyleSheet.absoluteFill, { zIndex: hasStartedPlaying ? 1 : 0 }]}
+      >
+        <Video
+          ref={videoRef}
+          source={{ uri: post.videoUrl! }}
+          style={StyleSheet.absoluteFill}
+          resizeMode={ResizeMode.COVER}
+          shouldPlay={isActive}
+          isMuted={false}
+          isLooping
+          progressUpdateIntervalMillis={500}
+          onPlaybackStatusUpdate={handlePlaybackStatus}
+        />
+      </TouchableOpacity>
+
+      {/* Buffering spinner */}
+      {isBuffering && isActive && hasStartedPlaying && (
+        <View style={hidReelStyles.overlay} pointerEvents="none">
+          <ActivityIndicator size="large" color="white" />
+        </View>
+      )}
+
+      {/* Top gradient for header/tabs readability */}
+      <LinearGradient
+        colors={['rgba(0,0,0,0.5)', 'transparent']}
+        style={hidReelStyles.topGradient}
+        pointerEvents="none"
+      />
+
+      {/* Bottom gradient + info */}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.7)']}
+        style={hidReelStyles.bottomGradient}
+        pointerEvents="box-none"
+      >
+        <View style={hidReelStyles.bottomContent}>
+          {/* Left: user info + description */}
+          <View style={hidReelStyles.bottomLeft}>
+            <View style={hidReelStyles.userRow}>
+              {postAuthor && (
+                <AvatarDisplay
+                  size={scale(32)}
+                  avatarType={postAuthor.avatarType || 'predefined'}
+                  avatarId={postAuthor.avatarId || 'male'}
+                  photoURL={typeof postAuthor.photoURL === 'string' ? postAuthor.photoURL : undefined}
+                  photoURLThumbnail={typeof postAuthor.photoURLThumbnail === 'string' ? postAuthor.photoURLThumbnail : undefined}
+                  backgroundColor="#8B5CF6"
+                  showBorder={false}
+                />
+              )}
+              <Text style={hidReelStyles.username} numberOfLines={1}>
+                {postAuthor?.displayName || 'Usuario'}
+              </Text>
+              <Text style={hidReelStyles.timeAgo}>
+                {getRelativeTime(post.createdAt.toDate())}
+              </Text>
+            </View>
+            {post.content ? (
+              <Text style={hidReelStyles.description} numberOfLines={2}>
+                {post.content}
+              </Text>
+            ) : null}
+          </View>
+
+          {/* Right sidebar: actions */}
+          <View style={hidReelStyles.rightSidebar}>
+            <TouchableOpacity style={hidReelStyles.sidebarBtn} onPress={voteAgree}>
+              <Ionicons
+                name={voteStats.userVote === 'agree' ? 'thumbs-up' : 'thumbs-up-outline'}
+                size={scale(26)}
+                color={voteStats.userVote === 'agree' ? '#22C55E' : 'white'}
+              />
+              <Text style={hidReelStyles.sidebarCount}>
+                {formatNumber(voteStats.agreementCount)}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={hidReelStyles.sidebarBtn} onPress={voteDisagree}>
+              <Ionicons
+                name={voteStats.userVote === 'disagree' ? 'thumbs-down' : 'thumbs-down-outline'}
+                size={scale(26)}
+                color={voteStats.userVote === 'disagree' ? '#EF4444' : 'white'}
+              />
+              <Text style={hidReelStyles.sidebarCount}>
+                {formatNumber(voteStats.disagreementCount)}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={hidReelStyles.sidebarBtn} onPress={() => onComment(post.id!)}>
+              <Ionicons name="chatbubble-outline" size={scale(26)} color="white" />
+              <Text style={hidReelStyles.sidebarCount}>
+                {formatNumber(post.comments)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </LinearGradient>
+    </View>
+  );
+});
+
+const hidReelStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 3,
+  },
+  topGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: scale(120),
+    zIndex: 3,
+  },
+  bottomGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingTop: scale(60),
+    paddingHorizontal: scale(16),
+    paddingBottom: scale(16),
+    zIndex: 3,
+  },
+  bottomContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  bottomLeft: {
+    flex: 1,
+    marginRight: scale(12),
+  },
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+    marginBottom: scale(8),
+  },
+  username: {
+    color: 'white',
+    fontSize: scale(15),
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  timeAgo: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: scale(12),
+  },
+  description: {
+    color: 'white',
+    fontSize: scale(14),
+    lineHeight: scale(20),
+  },
+  rightSidebar: {
+    alignItems: 'center',
+    gap: scale(20),
+    paddingBottom: scale(8),
+  },
+  sidebarBtn: {
+    alignItems: 'center',
+    gap: scale(4),
+  },
+  sidebarCount: {
+    color: 'white',
+    fontSize: scale(12),
+    fontWeight: '500',
+  },
+});
+
 const LandingScreen: React.FC = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -264,6 +514,63 @@ const LandingScreen: React.FC = () => {
   const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [activeTab, setActiveTab] = useState<'flow' | 'hids'>('flow');
+  const [containerHeight, setContainerHeight] = useState(0);
+  const hidsListRef = useRef<FlatList>(null);
+  const [hidsScrollTarget, setHidsScrollTarget] = useState<number | null>(null);
+  const [hidsReady, setHidsReady] = useState(true);
+
+  // Sticky tabs tracking with smooth animation
+  const tabsOffsetY = useRef(0);
+  const isTabsStickyRef = useRef(false);
+  const stickyAnim = useRef(new Animated.Value(0)).current;
+  const prevTabRef = useRef(activeTab);
+
+  const handleFlowScroll = useCallback((event: any) => {
+    const y = event.nativeEvent.contentOffset.y;
+    const shouldStick = y >= tabsOffsetY.current && tabsOffsetY.current > 0;
+    if (shouldStick !== isTabsStickyRef.current) {
+      isTabsStickyRef.current = shouldStick;
+      Animated.timing(stickyAnim, {
+        toValue: shouldStick ? 1 : 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [stickyAnim]);
+
+  // Handle tab switches
+  useEffect(() => {
+    if (activeTab === 'flow') {
+      // FlatList stays mounted so scroll position and sticky state are preserved
+      if (!isTabsStickyRef.current) {
+        Animated.timing(stickyAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      }
+    }
+    prevTabRef.current = activeTab;
+  }, [activeTab]);
+
+  // Scroll Hids FlatList to target video when opening from Flow
+  useEffect(() => {
+    if (activeTab === 'hids' && hidsScrollTarget != null && containerHeight > 0) {
+      const idx = hidsScrollTarget;
+      setHidsScrollTarget(null);
+      // Wait for layout to complete, then scroll, then reveal
+      requestAnimationFrame(() => {
+        hidsListRef.current?.scrollToIndex({ index: idx, animated: false });
+        requestAnimationFrame(() => {
+          setHidsReady(true);
+        });
+      });
+    }
+  }, [activeTab, hidsScrollTarget, containerHeight]);
+
+  // Video posts for Hids tab
+  const videoPosts = useMemo(() => feedPosts.filter(p => !!p.videoUrl), [feedPosts]);
 
   // Hero carousel phrases
   const HERO_PHRASES = useRef([
@@ -499,17 +806,14 @@ const LandingScreen: React.FC = () => {
   };
 
   const handleVideoPress = useCallback((post: Post) => {
-    const videoPosts = feedPosts.filter(p => !!p.videoUrl);
-    const tabNavigation = navigation.getParent();
-    const mainNavigation = tabNavigation?.getParent();
-    if (mainNavigation) {
-      (mainNavigation as any).navigate('Reels', {
-        initialPost: post,
-        initialVideoPosts: videoPosts,
-        communitySlug: null,
-      });
+    const index = videoPosts.findIndex(p => p.id === post.id);
+    if (index >= 0) {
+      setHidsActiveIndex(index);
+      setHidsScrollTarget(index);
+      setHidsReady(false);
+      setActiveTab('hids');
     }
-  }, [feedPosts, navigation]);
+  }, [videoPosts]);
 
   const handleComment = (postId: string) => {
     const post = feedPosts.find(p => p.id === postId);
@@ -548,12 +852,6 @@ const LandingScreen: React.FC = () => {
     }
   };
 
-  const formatNumber = (num: number): string => {
-    if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'K';
-    }
-    return num.toString();
-  };
 
   const handleNotificationsPress = () => {
     if (!user) {
@@ -891,6 +1189,54 @@ const LandingScreen: React.FC = () => {
     );
   };
 
+  const renderTabBar = useCallback((transparent = false) => (
+    <View style={[
+      styles.tabBar,
+      {
+        borderBottomColor: transparent ? 'rgba(255,255,255,0.2)' : theme.colors.border,
+        backgroundColor: transparent ? 'transparent' : theme.colors.background,
+      },
+    ]}>
+      <TouchableOpacity
+        style={[
+          styles.tabItem,
+          activeTab === 'flow' && { borderBottomColor: transparent ? 'white' : theme.colors.accent },
+        ]}
+        onPress={() => setActiveTab('flow')}
+        activeOpacity={0.7}
+      >
+        <Text style={[
+          styles.tabItemText,
+          { color: transparent
+            ? (activeTab === 'flow' ? 'white' : 'rgba(255,255,255,0.6)')
+            : (activeTab === 'flow' ? theme.colors.text : theme.colors.textSecondary) },
+          activeTab === 'flow' && styles.tabItemTextActive,
+        ]}>
+          Flow
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[
+          styles.tabItem,
+          activeTab === 'hids' && { borderBottomColor: transparent ? 'white' : theme.colors.accent },
+        ]}
+        onPress={() => setActiveTab('hids')}
+        activeOpacity={0.7}
+      >
+        <Text style={[
+          styles.tabItemText,
+          { color: transparent
+            ? (activeTab === 'hids' ? 'white' : 'rgba(255,255,255,0.6)')
+            : (activeTab === 'hids' ? theme.colors.text : theme.colors.textSecondary) },
+          activeTab === 'hids' && styles.tabItemTextActive,
+        ]}>
+          Hids
+        </Text>
+      </TouchableOpacity>
+    </View>
+  ), [activeTab, theme]);
+
   const listHeader = useMemo(() => (
     <>
       {renderHero()}
@@ -901,17 +1247,13 @@ const LandingScreen: React.FC = () => {
       {feedPosts.length > 0 && (
         <>
           <View style={[styles.feedSeparator, { backgroundColor: theme.colors.surface }]} />
-          <View style={styles.feedContainer}>
-            <View style={styles.feedHeader}>
-              <Text style={[styles.feedTitle, { color: theme.colors.text }]}>
-                Publicaciones recientes
-              </Text>
-            </View>
+          <View onLayout={(e) => { tabsOffsetY.current = e.nativeEvent.layout.y; }}>
+            {renderTabBar()}
           </View>
         </>
       )}
     </>
-  ), [theme, trendingPost, featuredPost, feedPosts.length > 0, userCreatedCommunities, isMember, joiningId, user, heroIndex]);
+  ), [theme, trendingPost, featuredPost, feedPosts.length > 0, userCreatedCommunities, isMember, joiningId, user, heroIndex, renderTabBar]);
 
   const renderPostItem = useCallback(({ item }: { item: Post }) => (
     <PostCard
@@ -920,9 +1262,41 @@ const LandingScreen: React.FC = () => {
       onPrivateMessage={handlePrivateMessage}
       onPress={handlePostPress}
       onVideoPress={handleVideoPress}
-      isVisible={visiblePostIds.has(item.id || '')}
+      isVisible={visiblePostIds.has(item.id || '') && activeTab === 'flow'}
     />
-  ), [visiblePostIds, handleVideoPress]);
+  ), [visiblePostIds, handleVideoPress, activeTab]);
+
+  // ---- Hids reel viewability ----
+  const [hidsActiveIndex, setHidsActiveIndex] = useState(0);
+
+  const hidsViewabilityConfig = useRef<ViewabilityConfig>({
+    itemVisiblePercentThreshold: 50,
+  }).current;
+
+  const onHidsViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    if (viewableItems.length > 0 && viewableItems[0].index != null) {
+      setHidsActiveIndex(viewableItems[0].index);
+    }
+  }).current;
+
+  const hidsViewabilityPairs = useRef([
+    { viewabilityConfig: hidsViewabilityConfig, onViewableItemsChanged: onHidsViewableItemsChanged },
+  ]).current;
+
+  const renderHidItem = useCallback(({ item, index }: { item: Post; index: number }) => (
+    <HidReelItem
+      post={item}
+      isActive={index === hidsActiveIndex && activeTab === 'hids'}
+      height={containerHeight}
+      onComment={handleComment}
+    />
+  ), [hidsActiveIndex, activeTab, containerHeight, handleComment]);
+
+  const hidsGetItemLayout = useCallback((_: any, index: number) => ({
+    length: containerHeight,
+    offset: containerHeight * index,
+    index,
+  }), [containerHeight]);
 
   if (loading) {
     return (
@@ -932,35 +1306,109 @@ const LandingScreen: React.FC = () => {
     );
   }
 
+  const isHidsMode = activeTab === 'hids';
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Header onNotificationsPress={handleNotificationsPress} />
-      <FlatList
-        ref={flatListRef}
-        data={feedPosts}
-        renderItem={renderPostItem}
-        keyExtractor={(item) => item.id || Math.random().toString()}
-        ListHeaderComponent={listHeader}
-        ListFooterComponent={loadingMore ? (
-          <View style={styles.loadingMore}>
-            <ActivityIndicator size="small" color={theme.colors.accent} />
-          </View>
-        ) : null}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + SPACING.xl }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={theme.colors.accent}
-            colors={[theme.colors.accent]}
+    <View
+      style={[styles.container, { backgroundColor: isHidsMode ? '#000' : theme.colors.background }]}
+      onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}
+    >
+      {/* Header in normal flow (only for Flow mode) */}
+      {!isHidsMode && (
+        <Header onNotificationsPress={handleNotificationsPress} />
+      )}
+
+      {/* Content area */}
+      <View style={{ flex: 1 }}>
+        <View style={activeTab === 'flow' ? { flex: 1 } : { height: 0, overflow: 'hidden' }}>
+          <FlatList
+            ref={flatListRef}
+            data={feedPosts}
+            renderItem={renderPostItem}
+            keyExtractor={(item: Post) => item.id || Math.random().toString()}
+            ListHeaderComponent={listHeader}
+            ListFooterComponent={loadingMore ? (
+              <View style={styles.loadingMore}>
+                <ActivityIndicator size="small" color={theme.colors.accent} />
+              </View>
+            ) : null}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: insets.bottom + SPACING.xl }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={theme.colors.accent}
+                colors={[theme.colors.accent]}
+              />
+            }
+            onEndReached={loadMorePosts}
+            onEndReachedThreshold={0.5}
+            onScroll={handleFlowScroll}
+            scrollEventThrottle={16}
+            viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
+            removeClippedSubviews
           />
-        }
-        onEndReached={loadMorePosts}
-        onEndReachedThreshold={0.5}
-        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
-        removeClippedSubviews={true}
-      />
+        </View>
+
+        <View style={[
+          activeTab === 'hids' ? { flex: 1 } : { height: 0, overflow: 'hidden' },
+          activeTab === 'hids' && !hidsReady && { opacity: 0 },
+        ]}>
+          {containerHeight > 0 && videoPosts.length > 0 ? (
+            <FlatList
+              ref={hidsListRef}
+              data={videoPosts}
+              renderItem={renderHidItem}
+              keyExtractor={(item: Post) => `hid-${item.id}`}
+              pagingEnabled
+              showsVerticalScrollIndicator={false}
+              getItemLayout={hidsGetItemLayout}
+              windowSize={3}
+              maxToRenderPerBatch={2}
+              removeClippedSubviews={Platform.OS !== 'web'}
+              viewabilityConfigCallbackPairs={hidsViewabilityPairs}
+            />
+          ) : (
+            <View style={styles.hidsEmptyState}>
+              <Ionicons name="videocam-outline" size={scale(48)} color={isHidsMode ? 'rgba(255,255,255,0.5)' : theme.colors.textSecondary} />
+              <Text style={[styles.hidsEmptyTitle, { color: isHidsMode ? 'white' : theme.colors.text }]}>No hay hids</Text>
+              <Text style={[styles.hidsEmptySubtitle, { color: isHidsMode ? 'rgba(255,255,255,0.6)' : theme.colors.textSecondary }]}>
+                Aún no hay videos disponibles
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Sticky tab bar — only in Flow mode, slides in when scrolled past inline tabs */}
+        {!isHidsMode && (
+          <Animated.View
+            style={[
+              styles.tabBarStickyWrapper,
+              {
+                backgroundColor: theme.colors.background,
+                opacity: stickyAnim,
+                transform: [{
+                  translateY: stickyAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-scale(44), 0],
+                  }),
+                }],
+              },
+            ]}
+          >
+            {renderTabBar()}
+          </Animated.View>
+        )}
+      </View>
+
+      {/* Hids mode: transparent Header + Tabs overlay */}
+      {isHidsMode && (
+        <View style={styles.hidsOverlay} pointerEvents="box-none">
+          <Header onNotificationsPress={handleNotificationsPress} transparent />
+          {renderTabBar(true)}
+        </View>
+      )}
     </View>
   );
 };
@@ -1257,17 +1705,62 @@ const styles = StyleSheet.create({
     height: scale(8),
     marginTop: SPACING.xl,
   },
-  feedContainer: {
-    paddingTop: SPACING.lg,
+
+  // Tab bar (Flow / Hids) — shared between inline and sticky
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 0.5,
   },
-  feedHeader: {
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
+  tabBarStickyWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
   },
-  feedTitle: {
-    fontSize: FONT_SIZE.lg,
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabItemText: {
+    fontSize: FONT_SIZE.base,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  tabItemTextActive: {
     fontWeight: FONT_WEIGHT.bold,
   },
+
+  // Hids overlay (transparent header + tabs)
+  hidsOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+  },
+
+  // Hids empty state
+  hidsEmptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  hidsEmptyTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.semibold,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  hidsEmptySubtitle: {
+    fontSize: FONT_SIZE.base,
+    textAlign: 'center',
+  },
+
   loadingMore: {
     paddingVertical: SPACING.xl,
     alignItems: 'center',
