@@ -504,8 +504,10 @@ const LandingScreen: React.FC = () => {
   const { joinCommunity, leaveCommunity, isMember } = useCommunities(userProfile?.uid);
   const [joiningId, setJoiningId] = useState<string | null>(null);
 
-  const [trendingPost, setTrendingPost] = useState<Post | null>(null);
-  const [featuredPost, setFeaturedPost] = useState<Post | null>(null);
+  const [trendingPosts, setTrendingPosts] = useState<Post[]>([]);
+  const [featuredPosts, setFeaturedPosts] = useState<Post[]>([]);
+  const [trendingIndex, setTrendingIndex] = useState(0);
+  const [featuredIndex, setFeaturedIndex] = useState(0);
   const [feedPosts, setFeedPosts] = useState<Post[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
@@ -671,24 +673,27 @@ const LandingScreen: React.FC = () => {
       setHasMore((postsResult?.documents || []).length >= 20);
 
       if (posts.length > 0) {
-        // Post con mas engagement como "Tema del dia"
+        // Ordenar por engagement (votos + comentarios)
         const sorted = [...posts].sort((a, b) =>
           (b.agreementCount + b.comments) - (a.agreementCount + a.comments)
         );
-        setTrendingPost(sorted[0]);
-        if (sorted.length > 1) {
-          setFeaturedPost(sorted[1]);
-        }
+        // Top 3 → "Tema del dia" carousel
+        const top3 = sorted.slice(0, 3);
+        setTrendingPosts(top3);
+        setTrendingIndex(0);
+        // Siguientes 3 → "Opiniones destacadas" carousel
+        const next3 = sorted.slice(3, 6);
+        setFeaturedPosts(next3);
+        setFeaturedIndex(0);
 
-        // Feed cronológico (excluir trending y featured)
-        const trendingId = sorted[0]?.id;
-        const featuredId = sorted[1]?.id;
-        const feedFiltered = posts.filter(p => p.id !== trendingId && p.id !== featuredId);
+        // Excluir los 6 destacados del feed principal
+        const excludeIds = new Set(sorted.slice(0, 6).map(p => p.id));
+        const feedFiltered = posts.filter(p => !excludeIds.has(p.id));
         setFeedPosts(feedFiltered);
       } else {
         setFeedPosts([]);
-        setTrendingPost(null);
-        setFeaturedPost(null);
+        setTrendingPosts([]);
+        setFeaturedPosts([]);
       }
     } catch (error) {
       console.error('Error loading landing data:', error);
@@ -708,10 +713,12 @@ const LandingScreen: React.FC = () => {
       const newPosts = postsResult?.documents || [];
 
       if (newPosts.length > 0) {
-        // Excluir trending y featured que ya se muestran arriba
-        const trendingId = trendingPost?.id;
-        const featuredId = featuredPost?.id;
-        const filtered = newPosts.filter(p => p.id !== trendingId && p.id !== featuredId);
+        // Excluir los 6 posts destacados que ya se muestran arriba
+        const excludeIds = new Set([
+          ...trendingPosts.map(p => p.id),
+          ...featuredPosts.map(p => p.id),
+        ]);
+        const filtered = newPosts.filter(p => !excludeIds.has(p.id));
 
         setFeedPosts(prev => [...prev, ...filtered]);
         setLastDoc(postsResult?.lastDoc || null);
@@ -723,7 +730,7 @@ const LandingScreen: React.FC = () => {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, lastDoc, trendingPost, featuredPost]);
+  }, [loadingMore, hasMore, lastDoc, trendingPosts, featuredPosts]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -942,16 +949,13 @@ const LandingScreen: React.FC = () => {
     );
   };
 
-  // Agrupar categorías en columnas de 2 para un solo ScrollView horizontal
-  const categoryColumns = useMemo(() => {
-    const cols: (typeof LANDING_CATEGORIES[0] | null)[][] = [];
-    for (let i = 0; i < LANDING_CATEGORIES.length; i += 2) {
-      cols.push([
-        LANDING_CATEGORIES[i],
-        i + 1 < LANDING_CATEGORIES.length ? LANDING_CATEGORIES[i + 1] : null,
-      ]);
-    }
-    return cols;
+  // Dividir categorías en 2 filas independientes
+  const categoryRows = useMemo(() => {
+    const mid = Math.ceil(LANDING_CATEGORIES.length / 2);
+    return [
+      LANDING_CATEGORIES.slice(0, mid),
+      LANDING_CATEGORIES.slice(mid),
+    ];
   }, []);
 
   const renderCategoryItem = (category: typeof LANDING_CATEGORIES[0]) => (
@@ -995,18 +999,17 @@ const LandingScreen: React.FC = () => {
       <Text style={[styles.categoriesTitle, { color: theme.colors.text }]}>
         Explora por categoria
       </Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoriesScrollContent}
-      >
-        {categoryColumns.map((col, colIndex) => (
-          <View key={colIndex} style={styles.categoryColumn}>
-            {renderCategoryItem(col[0]!)}
-            {col[1] && renderCategoryItem(col[1])}
-          </View>
-        ))}
-      </ScrollView>
+      {categoryRows.map((row, rowIndex) => (
+        <ScrollView
+          key={rowIndex}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoriesScrollContent}
+          style={rowIndex > 0 ? styles.categoryRowGap : undefined}
+        >
+          {row.map((cat) => renderCategoryItem(cat))}
+        </ScrollView>
+      ))}
     </View>
   );
 
@@ -1128,68 +1131,148 @@ const LandingScreen: React.FC = () => {
     </View>
   );
 
+  const CAROUSEL_INNER_WIDTH = SCREEN_WIDTH - SPACING.lg * 2;
+
+  const handleTrendingScroll = useCallback((event: any) => {
+    const x = event.nativeEvent.contentOffset.x;
+    const index = Math.round(x / CAROUSEL_INNER_WIDTH);
+    if (index >= 0 && index < trendingPosts.length) {
+      setTrendingIndex(index);
+    }
+  }, [CAROUSEL_INNER_WIDTH, trendingPosts.length]);
+
+  const handleFeaturedScroll = useCallback((event: any) => {
+    const x = event.nativeEvent.contentOffset.x;
+    const index = Math.round(x / CAROUSEL_INNER_WIDTH);
+    if (index >= 0 && index < featuredPosts.length) {
+      setFeaturedIndex(index);
+    }
+  }, [CAROUSEL_INNER_WIDTH, featuredPosts.length]);
+
   const renderTrendingTopic = () => {
-    if (!trendingPost) return null;
+    if (trendingPosts.length === 0) return null;
 
     return (
-      <TouchableOpacity
-        style={[styles.trendingContainer, { backgroundColor: theme.colors.card }]}
-        onPress={() => handlePostPress(trendingPost)}
-        activeOpacity={0.8}
-      >
-        <View style={styles.trendingHeader}>
-          <Text style={styles.trendingEmoji}>🔥</Text>
-          <Text style={[styles.trendingLabel, { color: theme.colors.textSecondary }]}>
-            Tema del dia
-          </Text>
-        </View>
-        <Text style={[styles.trendingTitle, { color: theme.colors.text }]} numberOfLines={2}>
-          {trendingPost.content}
-        </Text>
-        <View style={styles.trendingStats}>
-          <Text style={[styles.trendingStatText, { color: theme.colors.textSecondary }]}>
-            {formatNumber(trendingPost.agreementCount + trendingPost.disagreementCount)} Respuestas
-          </Text>
-          <Text style={[styles.trendingDot, { color: theme.colors.textSecondary }]}>•</Text>
-          <Text style={[styles.trendingStatText, { color: theme.colors.accent }]}>
-            Debate intenso
-          </Text>
-        </View>
-        <View style={[styles.trendingProgress, { backgroundColor: theme.colors.border }]}>
-          <View style={[styles.trendingProgressBar, { backgroundColor: theme.colors.accent, width: '70%' }]} />
-        </View>
-      </TouchableOpacity>
+      <View style={styles.carouselSection}>
+        <ScrollView
+          horizontal
+          pagingEnabled
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={handleTrendingScroll}
+          scrollEventThrottle={100}
+          style={styles.carouselScroll}
+        >
+          {trendingPosts.map((post, i) => {
+            const total = post.agreementCount + post.disagreementCount;
+            const agreePercent = total > 0 ? Math.round((post.agreementCount / total) * 100) : 50;
+            return (
+              <TouchableOpacity
+                key={post.id || i}
+                style={[styles.trendingContainer, { width: CAROUSEL_INNER_WIDTH, backgroundColor: theme.colors.card }]}
+                onPress={() => handlePostPress(post)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.trendingHeader}>
+                  <Text style={styles.trendingEmoji}>🔥</Text>
+                  <Text style={[styles.trendingLabel, { color: theme.colors.textSecondary }]}>
+                    Tema del dia
+                  </Text>
+                </View>
+                <Text style={[styles.trendingTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                  {post.content}
+                </Text>
+                <View style={styles.trendingStats}>
+                  <Text style={[styles.trendingStatText, { color: theme.colors.textSecondary }]}>
+                    {formatNumber(post.agreementCount + post.disagreementCount)} Respuestas
+                  </Text>
+                  <Text style={[styles.trendingDot, { color: theme.colors.textSecondary }]}>•</Text>
+                  <Text style={[styles.trendingStatText, { color: theme.colors.accent }]}>
+                    Debate intenso
+                  </Text>
+                </View>
+                <View style={[styles.trendingProgress, { backgroundColor: theme.colors.border }]}>
+                  <View style={[styles.trendingProgressBar, { backgroundColor: theme.colors.accent, width: `${agreePercent}%` }]} />
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+        {trendingPosts.length > 1 && (
+          <View style={styles.carouselDots}>
+            {trendingPosts.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.carouselDot,
+                  { backgroundColor: index === trendingIndex ? theme.colors.accent : theme.colors.border },
+                  index === trendingIndex && styles.carouselDotActive,
+                ]}
+              />
+            ))}
+          </View>
+        )}
+      </View>
     );
   };
 
   const renderFeaturedOpinion = () => {
-    if (!featuredPost) return null;
+    if (featuredPosts.length === 0) return null;
 
     return (
-      <TouchableOpacity
-        style={[styles.featuredContainer, { backgroundColor: theme.colors.card, borderColor: theme.colors.accent }]}
-        onPress={() => handlePostPress(featuredPost)}
-        activeOpacity={0.8}
-      >
-        <View style={styles.featuredHeader}>
-          <Text style={styles.featuredEmoji}>⭐</Text>
-          <Text style={[styles.featuredLabel, { color: theme.colors.text }]}>
-            Opinion destacada
-          </Text>
-        </View>
-        <Text style={[styles.featuredContent, { color: theme.colors.text }]} numberOfLines={3}>
-          {featuredPost.content}
-        </Text>
-        <View style={styles.featuredStats}>
-          <Text style={[styles.featuredStatText, { color: theme.colors.textSecondary }]}>
-            {formatNumber(featuredPost.agreementCount)} Likes
-          </Text>
-          <Text style={[styles.featuredDot, { color: theme.colors.textSecondary }]}>•</Text>
-          <Text style={[styles.featuredStatText, { color: theme.colors.textSecondary }]}>
-            {formatNumber(featuredPost.comments)} Comentarios
-          </Text>
-        </View>
-      </TouchableOpacity>
+      <View style={styles.carouselSection}>
+        <ScrollView
+          horizontal
+          pagingEnabled
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={handleFeaturedScroll}
+          scrollEventThrottle={100}
+          style={styles.carouselScroll}
+        >
+          {featuredPosts.map((post, i) => (
+            <TouchableOpacity
+              key={post.id || i}
+              style={[styles.featuredContainer, { width: CAROUSEL_INNER_WIDTH, backgroundColor: theme.colors.card, borderColor: theme.colors.accent }]}
+              onPress={() => handlePostPress(post)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.featuredHeader}>
+                <Text style={styles.featuredEmoji}>⭐</Text>
+                <Text style={[styles.featuredLabel, { color: theme.colors.text }]}>
+                  Opinion destacada
+                </Text>
+              </View>
+              <Text style={[styles.featuredContent, { color: theme.colors.text }]} numberOfLines={3}>
+                {post.content}
+              </Text>
+              <View style={styles.featuredStats}>
+                <Text style={[styles.featuredStatText, { color: theme.colors.textSecondary }]}>
+                  {formatNumber(post.agreementCount)} Likes
+                </Text>
+                <Text style={[styles.featuredDot, { color: theme.colors.textSecondary }]}>•</Text>
+                <Text style={[styles.featuredStatText, { color: theme.colors.textSecondary }]}>
+                  {formatNumber(post.comments)} Comentarios
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {featuredPosts.length > 1 && (
+          <View style={styles.carouselDots}>
+            {featuredPosts.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.carouselDot,
+                  { backgroundColor: index === featuredIndex ? theme.colors.accent : theme.colors.border },
+                  index === featuredIndex && styles.carouselDotActive,
+                ]}
+              />
+            ))}
+          </View>
+        )}
+      </View>
     );
   };
 
@@ -1257,7 +1340,7 @@ const LandingScreen: React.FC = () => {
         </>
       )}
     </>
-  ), [theme, trendingPost, featuredPost, feedPosts.length > 0, userCreatedCommunities, isMember, joiningId, user, heroIndex, renderTabBar]);
+  ), [theme, trendingPosts, featuredPosts, trendingIndex, featuredIndex, feedPosts.length > 0, userCreatedCommunities, isMember, joiningId, user, heroIndex, renderTabBar]);
 
   const renderPostItem = useCallback(({ item }: { item: Post }) => (
     <PostCard
@@ -1572,8 +1655,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     gap: SPACING.sm,
   },
-  categoryColumn: {
-    gap: SPACING.sm,
+  categoryRowGap: {
+    marginTop: SPACING.sm,
   },
   categoryItem: {
     width: scale(94),
@@ -1669,10 +1752,30 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.xs,
   },
 
-  // Trending Topic
-  trendingContainer: {
+  // Carousel shared
+  carouselSection: {
     marginTop: SPACING.lg,
     marginHorizontal: SPACING.lg,
+  },
+  carouselScroll: {
+  },
+  carouselDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: scale(5),
+    marginTop: SPACING.sm,
+  },
+  carouselDot: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
+  },
+  carouselDotActive: {
+    width: scale(18),
+  },
+
+  // Trending Topic
+  trendingContainer: {
     padding: SPACING.lg,
     borderRadius: BORDER_RADIUS.lg,
   },
@@ -1719,8 +1822,6 @@ const styles = StyleSheet.create({
 
   // Featured Opinion
   featuredContainer: {
-    marginTop: SPACING.lg,
-    marginHorizontal: SPACING.lg,
     padding: SPACING.lg,
     borderRadius: BORDER_RADIUS.lg,
     borderLeftWidth: scale(4),

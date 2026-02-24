@@ -283,9 +283,10 @@ const PostDetailScreen: React.FC = () => {
         }
       }
 
+      const activeUid = userProfile?.uid || user.uid;
       const commentData: Omit<Comment, 'id'> = {
         postId: post.id,
-        userId: user.uid,
+        userId: activeUid,
         content: trimmedContent,
         likes: 0,
         createdAt: new Date() as any,
@@ -303,11 +304,11 @@ const PostDetailScreen: React.FC = () => {
       });
 
       // Crear notificación de comentario
-      if (userProfile && post.userId !== user.uid) {
+      if (userProfile && post.userId !== activeUid) {
         try {
           await notificationService.createCommentNotification(
             post.userId,
-            user.uid,
+            activeUid,
             userProfile.displayName || 'Usuario',
             {
               type: userProfile.avatarType,
